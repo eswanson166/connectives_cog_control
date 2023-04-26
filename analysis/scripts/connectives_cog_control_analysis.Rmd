@@ -13,6 +13,7 @@ library(tidyverse)
 library(eyetrackingR)
 library(lme4)
 library(readxl)
+source("helpers.R")
 theme_set(theme_bw())
 ```
 
@@ -28,6 +29,32 @@ et_data = read.table('../data/conn_cog_control_timebin.txt', sep = "\t", na.stri
 Prepare eye-tracking data:
 ```{r}
 et_data$time_since_connective_onset = et_data$BIN_START_TIME - 500
+et_data$participant_number = et_data$RECORDING_SESSION_LABEL
+et_data = et_data %>% mutate(condition = case_when(
+  condition == "alors" ~ "so",
+  condition == "mais" ~ "but"
+),
+condition_fr = case_when(
+  condition == "so" ~ "alors",
+  condition == "but" ~ "mais"
+))
+```
+
+Correct a few errors in coding explicit selection choices (all noted in comments):
+```{r}
+et_data$lex_related_image_selected[et_data$participant_number == 21032301 & et_data$TRIAL_LABEL == 'Trial: 9'] = 1
+et_data$lex_related_image_selected[et_data$participant_number == 21032304 & et_data$TRIAL_LABEL == 'Trial: 22'] = 0
+et_data$lex_related_image_selected[et_data$participant_number == 03042307 & et_data$TRIAL_LABEL == 'Trial: 17'] = 1
+et_data$lex_related_image_selected[et_data$participant_number == 7042304 & et_data$TRIAL_LABEL == 'Trial: 23'] = 1
+et_data$lex_related_image_selected[et_data$participant_number == 11042306 & et_data$TRIAL_LABEL == 'Trial: 13'] = 1
+et_data$lex_related_image_selected[et_data$participant_number == 12042303 & et_data$TRIAL_LABEL == 'Trial: 19'] = 1
+et_data$lex_related_image_selected[et_data$participant_number == 17032305 & et_data$TRIAL_LABEL == 'Trial: 16'] = 1
+et_data$lex_related_image_selected[et_data$participant_number == 22032306 & et_data$TRIAL_LABEL == 'Trial: 1'] = 1
+et_data$lex_related_image_selected[et_data$participant_number == 10042305 & et_data$TRIAL_LABEL == 'Trial: 1'] = 0
+
+
+
+# note: try to figure out why 31032302 is excluded
 ```
 
 Make eye-tracking data:
@@ -44,11 +71,135 @@ et_df = make_eyetrackingr_data(et_data,
 
 ## Participant data
 
+Load participant data:
 ```{r}
 participant_df = read_excel('../data/participant-log-connectives-cog-control.xlsx')
+participant_df = participant_df %>% type.convert()
+participant_df = participant_df %>% mutate(age_group = case_when(
+  age_group == '4' ~ '4-year-olds',
+  age_group == '5' ~ '5-year-olds',
+  age_group == '6' ~ '6-year-olds',
+  age_group == 'adult' ~ 'adults'
+))
+```
+
+## Merging data
+
+Merge eye-tracking data and participant data:
+```{r}
+et_df = left_join(et_df, participant_df, by = "participant_number")
+```
+
+## Exclusions
+
+Exclude participants who were distracted, bilingual, etc:
+```{r}
+et_df = et_df %>% filter(exclude == "no")
+```
+
+Exclude participants who didn't complete more than half the trials:
+```{r}
+et_df = et_df %>% group_by(participant_number) %>% 
+  filter(max(TRIAL_INDEX) >= 12)
+# double check this
 ```
 
 
-# 
+# Time course
+
+Pull out test trials:
+```{r}
+et_df = et_df %>% filter(practicestatus == "test")
+```
+
+Make time sequence data:
+```{r}
+df_timecourse <- make_time_sequence_data(et_df, time_bin_size = 1, 
+                                         predictor_columns = c("condition", "age_group"),
+                                         aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
+                                         summarize_by = "participant_number")
+```
+
+Make time course graph by age group:
+```{r}
+plot(df_timecourse, predictor_column = "condition") + theme_bw() +  theme(text = element_text(size = 10)) +  
+  geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
+  geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
+  ylim(0,1) +
+  facet_wrap(~age_group) +
+  #annotate("text", x=-130, y=.99, label="connective \nonset", size=3.5) +
+  xlab("Time since connective onset (ms)") +
+  ylab("Proportion of looks to lexically related image") +
+  ggtitle("Proportion of looks to lexically related image by condition")
+
+ggsave('timecourse_age_group.pdf', path = '../graphs', height = 6, width = 8)
+```
+
+# Explicit selection data
+
+Summarize number of trials on each condition for which participants selected the lexically related image:
+```{r}
+selection_summ = et_df %>% group_by(participant_number, TRIAL_LABEL) %>%
+  filter(row_number() == 1) %>%
+  group_by(condition, age_group) %>%
+  mutate(total_trials_cond = n()) %>%
+  group_by(condition, lex_related_image_selected, age_group) %>%
+  summarise(n = n(), total_trials_cond = unique(total_trials_cond), 
+            prop = unique(n()/total_trials_cond),
+            CI.low = prop - 1.96*sqrt(prop*(1-prop)/total_trials_cond),
+            CI.high = prop + 1.96*sqrt(prop*(1-prop)/total_trials_cond)) %>%
+  filter(lex_related_image_selected == 1)
+```
+
+Graph proportion of trials on each condition for which participants selected the lexically related image:
+```{r}
+ggplot(selection_summ) +
+  theme_bw() +
+  aes(x = condition, y = prop, fill = condition) +
+  facet_wrap(~age_group) +
+  geom_bar(stat = "identity", position = position_dodge2(preserve = "single")) + 
+  geom_errorbar(aes(ymin = CI.low, ymax = CI.high), width = .2, position = position_dodge(.9)) +
+  scale_fill_discrete(name = "Condition") +
+  ggtitle("Proportion of trials with lexically related image selected") +
+  xlab("Condition") +
+  ylab("Proportion of trials with lexically related image selected")
+
+ggsave('selection_age_group_bar.pdf', path = '../graphs', height = 4, width = 6)
+```
+
+Graph proportion of trials on each condition for which participants selected the lexically related image:
+```{r}
+ggplot(selection_summ) +
+  theme_bw() +
+  aes(x = age_group, y = prop, group = condition, color = condition) +
+  geom_line() + 
+  geom_point() +
+  geom_errorbar(aes(ymin = CI.low, ymax = CI.high), width = .2) +
+  scale_color_discrete(name = "Condition") +
+  ggtitle("Proportion of trials with lexically related image selected by age group") +
+  xlab("Age") +
+  ylab("Proportion of trials with lexically related image selected")
+
+ggsave('selection_age_group_line.pdf', path = '../graphs', height = 4, width = 6)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
