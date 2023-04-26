@@ -30,6 +30,10 @@ Prepare eye-tracking data:
 ```{r}
 et_data$time_since_connective_onset = et_data$BIN_START_TIME - 500
 et_data$participant_number = et_data$RECORDING_SESSION_LABEL
+```
+
+Fix labeling of so and but conditions:
+```{r}
 et_data = et_data %>% mutate(condition = case_when(
   condition == "alors" ~ "so",
   condition == "mais" ~ "but"
@@ -38,6 +42,8 @@ condition_fr = case_when(
   condition == "so" ~ "alors",
   condition == "but" ~ "mais"
 ))
+
+et_data$condition = relevel(factor(et_data$condition), ref = 'but')
 ```
 
 Correct a few errors in coding explicit selection choices (all noted in comments):
@@ -104,6 +110,12 @@ et_df = et_df %>% group_by(participant_number) %>%
 # double check this
 ```
 
+Check the number of participants in each age group:
+```{r}
+et_df %>% group_by(participant_number) %>% filter(row_number() == 1) %>%
+  group_by(age_group) %>% summarise(n = n())
+```
+
 
 # Time course
 
@@ -115,7 +127,7 @@ et_df = et_df %>% filter(practicestatus == "test")
 Make time sequence data:
 ```{r}
 df_timecourse <- make_time_sequence_data(et_df, time_bin_size = 1, 
-                                         predictor_columns = c("condition", "age_group"),
+                                         predictor_columns = c("condition", "age_group", "child_adult_group"),
                                          aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
                                          summarize_by = "participant_number")
 ```
@@ -126,6 +138,7 @@ plot(df_timecourse, predictor_column = "condition") + theme_bw() +  theme(text =
   geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
   geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
   ylim(0,1) +
+  xlim(-500, 4000) +
   facet_wrap(~age_group) +
   #annotate("text", x=-130, y=.99, label="connective \nonset", size=3.5) +
   xlab("Time since connective onset (ms)") +
@@ -133,6 +146,22 @@ plot(df_timecourse, predictor_column = "condition") + theme_bw() +  theme(text =
   ggtitle("Proportion of looks to lexically related image by condition")
 
 ggsave('timecourse_age_group.pdf', path = '../graphs', height = 6, width = 8)
+```
+
+Make time course graph for children vs. adults:
+```{r}
+plot(df_timecourse, predictor_column = "condition") + theme_bw() +  theme(text = element_text(size = 10)) +  
+  geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
+  geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
+  ylim(0,1) +
+  xlim(-500, 4000) +
+  facet_wrap(~child_adult_group) +
+  #annotate("text", x=-130, y=.99, label="connective \nonset", size=3.5) +
+  xlab("Time since connective onset (ms)") +
+  ylab("Proportion of looks to lexically related image") +
+  ggtitle("Proportion of looks to lexically related image by condition")
+
+ggsave('timecourse_child_adult.pdf', path = '../graphs', height = 6, width = 8)
 ```
 
 # Explicit selection data
@@ -174,10 +203,12 @@ ggplot(selection_summ) +
   aes(x = age_group, y = prop, group = condition, color = condition) +
   geom_line() + 
   geom_point() +
+  ylim(0,1.05) +
+  geom_hline(yintercept=0.5, colour="black",linetype = 3, size=I(1),show.legend = FALSE)+
   geom_errorbar(aes(ymin = CI.low, ymax = CI.high), width = .2) +
   scale_color_discrete(name = "Condition") +
   ggtitle("Proportion of trials with lexically related image selected by age group") +
-  xlab("Age") +
+  xlab("Age group") +
   ylab("Proportion of trials with lexically related image selected")
 
 ggsave('selection_age_group_line.pdf', path = '../graphs', height = 4, width = 6)
