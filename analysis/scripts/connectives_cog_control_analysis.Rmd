@@ -10,13 +10,45 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(eyetrackingR)
 library(lme4)
+library(readxl)
 theme_set(theme_bw())
 ```
 
 # Load data
 
-```{r}
+## Eye-tracking data
 
+Load eye-tracking data:
+```{r}
+et_data = read.table('../data/conn_cog_control_timebin.txt', sep = "\t", na.strings = ".", header = TRUE)
 ```
+
+Prepare eye-tracking data:
+```{r}
+et_data$time_since_connective_onset = et_data$BIN_START_TIME - 500
+```
+
+Make eye-tracking data:
+```{r}
+et_df = make_eyetrackingr_data(et_data, 
+                       participant_column = 'RECORDING_SESSION_LABEL',
+                       trial_column = 'trialnumber',
+                       time_column = 'time_since_connective_onset',
+                       aoi_columns = c('AVERAGE_IA_1_SAMPLE_COUNT_.', 'AVERAGE_IA_2_SAMPLE_COUNT_.'),
+                       treat_non_aoi_looks_as_missing = TRUE,
+                       trackloss_column = 'AVERAGE_IA_0_SAMPLE_COUNT_.'
+                       )
+```
+
+## Participant data
+
+```{r}
+participant_df = read_excel('../data/participant-log-connectives-cog-control.xlsx')
+```
+
+
+# 
+
 
