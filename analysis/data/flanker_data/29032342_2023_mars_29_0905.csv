@@ -1,0 +1,7 @@
+block,image,condition,direction,subject,response,correct,switch,switchType,rt
+practice,left_fish.jpg,null,left,29032342,right,0,NA,NA,2.595
+practice,right_fish.jpg,null,right,29032342,left,0,NA,NA,4.498
+practice,bowl.jpg,null,,29032342,NA,0,NA,NA,-1
+practice,right_fish.jpg,null,right,29032342,right,1,NA,NA,3.236
+practice,bowl.jpg,null,,29032342,NA,0,NA,NA,-1
+practice,left_fish.jpg,null,left,29032342,left,1,NA,NA,0.097

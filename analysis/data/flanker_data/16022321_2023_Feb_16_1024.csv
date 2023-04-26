@@ -1,0 +1,13 @@
+block,image,condition,direction,subject,response,correct,switch,switchType,rt
+practice,left_fish.jpg,null,left,16022321,left,1,NA,NA,3.054
+practice,right_fish.jpg,null,right,16022321,right,1,NA,NA,1.332
+practice,bowl.jpg,null,,16022321,NA,0,NA,NA,-1
+practice,right_fish.jpg,null,right,16022321,right,1,NA,NA,1.250
+practice,bowl.jpg,null,,16022321,NA,0,NA,NA,-1
+practice,left_fish.jpg,null,left,16022321,left,1,NA,NA,1.519
+practice,con_left_practice.jpg,congruent,left,16022321,left,1,NA,NA,4.497
+practice,in_left_practice.jpg,incongruent,left,16022321,NA,0,1,ci,-1
+practice,con_right_practice.jpg,congruent,right,16022321,right,1,1,ic,3.251
+practice,nogo_right_practice.jpg,nogo,right,16022321,NA,1,1,cx,-1
+practice,in_right_practice.jpg,incongruent,right,16022321,NA,0,1,xi,-1
+practice,nogo_left_practice.jpg,nogo,left,16022321,NA,1,1,ix,-1

@@ -1,0 +1,22 @@
+---
+title: 'Connectives and cognitive control: Data analysis'
+author: "Elizabeth Swanson"
+date: "2023-04-26"
+output: html_document
+---
+
+# Set-up
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lme4)
+theme_set(theme_bw())
+```
+
+# Load data
+
+```{r}
+
+```
+
