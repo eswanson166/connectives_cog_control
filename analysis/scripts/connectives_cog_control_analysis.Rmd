@@ -7,6 +7,7 @@ output: html_document
 
 # Set-up
 
+Load required packages:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
@@ -17,18 +18,20 @@ source("helpers.R")
 theme_set(theme_bw())
 ```
 
-# Load data
+# Preparing data
 
 ## Eye-tracking data
 
-Load eye-tracking data:
+Load eye-tracking data (make sure you unzip the .zip file if you haven't already):
 ```{r}
-et_data = read.table('../data/conn_cog_control_timebin.txt', sep = "\t", na.strings = ".", header = TRUE)
+et_data = read.table('../data/conn_cog_control_timebin_1000sbefore.txt', sep = "\t", na.strings = ".", header = TRUE)
 ```
 
 Prepare eye-tracking data:
 ```{r}
-et_data$time_since_connective_onset = et_data$BIN_START_TIME - 500
+et_data$time_since_connective_onset = et_data$BIN_START_TIME - 1000
+# change this if you generate timebin report starting at a point other than 1000s before connective onset
+
 et_data$participant_number = et_data$RECORDING_SESSION_LABEL
 ```
 
@@ -81,6 +84,10 @@ Load participant data:
 ```{r}
 participant_df = read_excel('../data/participant-log-connectives-cog-control.xlsx')
 participant_df = participant_df %>% type.convert()
+```
+
+Rename age groups:
+```{r}
 participant_df = participant_df %>% mutate(age_group = case_when(
   age_group == '4' ~ '4-year-olds',
   age_group == '5' ~ '5-year-olds',
@@ -89,12 +96,36 @@ participant_df = participant_df %>% mutate(age_group = case_when(
 ))
 ```
 
+## Flanker data
+
+Load Flanker data:
+```{r}
+flanker_files = list.files(path = '../data/flanker_data', full.names = TRUE)
+flanker_df = plyr::ldply(flanker_files, read_csv)
+flanker_df = flanker_df %>% type.convert()
+flanker_df$participant_number_fl = flanker_df$subject
+```
+
+
 ## Merging data
 
 Merge eye-tracking data and participant data:
 ```{r}
 et_df = left_join(et_df, participant_df, by = "participant_number")
+et_df$lex_related_image_selected = as.numeric(et_df$lex_related_image_selected)
 ```
+
+Merge Flanker data and participant data:
+```{r}
+flanker_df = left_join(flanker_df, participant_df, by = "participant_number_fl")
+```
+
+Exclude children who did not complete novel word learning task:
+```{r}
+flanker_df = flanker_df %>% filter(!is.na(participant_number))
+length(unique(flanker_df$participant_number_fl))
+```
+
 
 ## Exclusions
 
@@ -106,8 +137,8 @@ et_df = et_df %>% filter(exclude == "no")
 Exclude participants who didn't complete more than half the trials:
 ```{r}
 et_df = et_df %>% group_by(participant_number) %>% 
-  filter(max(TRIAL_INDEX) >= 12)
-# double check this
+  mutate(total_trials_completed = max(TRIAL_INDEX)) %>%
+  filter(total_trials_completed >= 12)
 ```
 
 Check the number of participants in each age group:
@@ -116,17 +147,24 @@ et_df %>% group_by(participant_number) %>% filter(row_number() == 1) %>%
   group_by(age_group) %>% summarise(n = n())
 ```
 
+Exclude these participants from Flanker data too:
+```{r}
+flanker_df = flanker_df %>% filter(participant_number %in% et_df$participant_number)
+```
 
-# Time course
+
+# Data visualization
+
+## Time course
 
 Pull out test trials:
 ```{r}
-et_df = et_df %>% filter(practicestatus == "test")
+test_df = et_df %>% filter(practicestatus == "test")
 ```
 
 Make time sequence data:
 ```{r}
-df_timecourse <- make_time_sequence_data(et_df, time_bin_size = 1, 
+df_timecourse <- make_time_sequence_data(test_df, time_bin_size = 1, 
                                          predictor_columns = c("condition", "age_group", "child_adult_group"),
                                          aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
                                          summarize_by = "participant_number")
@@ -138,7 +176,7 @@ plot(df_timecourse, predictor_column = "condition") + theme_bw() +  theme(text =
   geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
   geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
   ylim(0,1) +
-  xlim(-500, 4000) +
+  xlim(-1000, 4000) +
   facet_wrap(~age_group) +
   #annotate("text", x=-130, y=.99, label="connective \nonset", size=3.5) +
   xlab("Time since connective onset (ms)") +
@@ -164,31 +202,47 @@ plot(df_timecourse, predictor_column = "condition") + theme_bw() +  theme(text =
 ggsave('timecourse_child_adult.pdf', path = '../graphs', height = 6, width = 8)
 ```
 
-# Explicit selection data
+## Explicit selection data
+
+Create dataframe with one row per trial per participant:
+```{r}
+test_df_trial = test_df %>% group_by(participant_number, TRIAL_LABEL) %>%
+  filter(row_number() == 1) %>%
+  group_by(participant_number, condition) %>%
+  mutate(total_trials_cond = n(),
+         partic_prop_lex_related_image_selected = mean(na.omit(lex_related_image_selected)))
+```
+
+Create data frame with one row per participant:
+```{r}
+test_df_participant = test_df_trial %>% group_by(participant_number, condition) %>%
+  filter(row_number() == 1)
+```
 
 Summarize number of trials on each condition for which participants selected the lexically related image:
 ```{r}
-selection_summ = et_df %>% group_by(participant_number, TRIAL_LABEL) %>%
-  filter(row_number() == 1) %>%
+selection_summ = test_df_participant %>%
   group_by(condition, age_group) %>%
-  mutate(total_trials_cond = n()) %>%
-  group_by(condition, lex_related_image_selected, age_group) %>%
-  summarise(n = n(), total_trials_cond = unique(total_trials_cond), 
-            prop = unique(n()/total_trials_cond),
-            CI.low = prop - 1.96*sqrt(prop*(1-prop)/total_trials_cond),
-            CI.high = prop + 1.96*sqrt(prop*(1-prop)/total_trials_cond)) %>%
-  filter(lex_related_image_selected == 1)
+  summarise(n = n(), 
+            mean_prop_lex_related_image_selected = mean(partic_prop_lex_related_image_selected),
+            CI.low = ci.low(partic_prop_lex_related_image_selected),
+            CI.high = ci.high(partic_prop_lex_related_image_selected)) %>%
+  mutate(YMin = mean_prop_lex_related_image_selected - CI.low, 
+         YMax = mean_prop_lex_related_image_selected + CI.high)
 ```
 
 Graph proportion of trials on each condition for which participants selected the lexically related image:
 ```{r}
 ggplot(selection_summ) +
   theme_bw() +
-  aes(x = condition, y = prop, fill = condition) +
+  aes(x = condition, y = mean_prop_lex_related_image_selected, fill = condition) +
   facet_wrap(~age_group) +
   geom_bar(stat = "identity", position = position_dodge2(preserve = "single")) + 
-  geom_errorbar(aes(ymin = CI.low, ymax = CI.high), width = .2, position = position_dodge(.9)) +
+  geom_jitter(data = test_df_participant, aes(x = condition, y = partic_prop_lex_related_image_selected), 
+              shape = 21, size = 1, width = 0.2, height = 0, stroke = 0.4, alpha = 0.3) +
+  geom_errorbar(aes(ymin = YMin, ymax = YMax), width = .2, position = position_dodge(.9)) +
   scale_fill_discrete(name = "Condition") +
+  scale_y_continuous(limits = c(0, 1.06), oob = scales::squish) +
   ggtitle("Proportion of trials with lexically related image selected") +
   xlab("Condition") +
   ylab("Proportion of trials with lexically related image selected")
@@ -200,12 +254,12 @@ Graph proportion of trials on each condition for which participants selected the
 ```{r}
 ggplot(selection_summ) +
   theme_bw() +
-  aes(x = age_group, y = prop, group = condition, color = condition) +
+  aes(x = age_group, y = mean_prop_lex_related_image_selected, group = condition, color = condition) +
   geom_line() + 
   geom_point() +
   ylim(0,1.05) +
   geom_hline(yintercept=0.5, colour="black",linetype = 3, size=I(1),show.legend = FALSE)+
-  geom_errorbar(aes(ymin = CI.low, ymax = CI.high), width = .2) +
+  geom_errorbar(aes(ymin = YMin, ymax = YMax), width = .2) +
   scale_color_discrete(name = "Condition") +
   ggtitle("Proportion of trials with lexically related image selected by age group") +
   xlab("Age group") +
@@ -216,6 +270,26 @@ ggsave('selection_age_group_line.pdf', path = '../graphs', height = 4, width = 6
 
 
 
+
+
+
+
+
+SCRATCH:
+
+Summarize number of trials on each condition for which participants selected the lexically related image (OLD VERSION WITH ALL TRIALS TOGETHER)
+```{r}
+selection_summ = test_df %>% group_by(participant_number, TRIAL_LABEL) %>%
+  filter(row_number() == 1) %>%
+  group_by(condition, age_group) %>%
+  mutate(total_trials_cond = n()) %>%
+  group_by(condition, lex_related_image_selected, age_group) %>%
+  summarise(n = n(), total_trials_cond = unique(total_trials_cond), 
+            prop = unique(n()/total_trials_cond),
+            CI.low = prop - 1.96*sqrt(prop*(1-prop)/total_trials_cond),
+            CI.high = prop + 1.96*sqrt(prop*(1-prop)/total_trials_cond)) %>%
+  filter(lex_related_image_selected == 1)
+```
 
 
 
