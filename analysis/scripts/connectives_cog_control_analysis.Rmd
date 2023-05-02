@@ -213,7 +213,7 @@ test_df_trial = test_df %>% group_by(participant_number, TRIAL_LABEL) %>%
          partic_prop_lex_related_image_selected = mean(na.omit(lex_related_image_selected)))
 ```
 
-Create data frame with one row per participant:
+Create data frame with one row per participant per condition:
 ```{r}
 test_df_participant = test_df_trial %>% group_by(participant_number, condition) %>%
   filter(row_number() == 1)
@@ -268,6 +268,351 @@ ggplot(selection_summ) +
 ggsave('selection_age_group_line.pdf', path = '../graphs', height = 4, width = 6)
 ```
 
+# Data analysis
+
+## Flanker task data
+
+### Flanker data prep
+
+Enter switch data as either 'switch' or 'non-switch':
+```{r}
+flanker_df = flanker_df %>% 
+  mutate(switch = case_when(
+    switch == 0 ~ 'nonswitch',
+    switch == 1 ~ 'switch'))
+```
+
+#### Reaction time
+
+Pull out data from the test block, in conditions other than no-go, where participant answered correctly (as we are looking at RT):
+```{r}
+flanker_df_rt = flanker_df %>% filter(block == 'test', correct == 1, condition != 'nogo')
+```
+
+Calculate each participant's mean RT and sd:
+```{r}
+flanker_df_rt = flanker_df_rt %>% group_by(participant_number_fl) %>% 
+  mutate(mean_rt = mean(rt), 
+         sd_rt = sd(rt),
+         max_rt = mean_rt + 3*sd_rt,
+         min_rt = mean_rt - 3*sd_rt)
+```
+
+If participant's RT is more than 3 SDs above or below the mean, replace it with that number:
+```{r}
+flanker_df_rt = flanker_df_rt %>% mutate(clean_rt = ifelse(rt=="-1", "-1",
+                           ifelse(rt >= max_rt, max_rt,
+                                  ifelse(rt <= min_rt, min_rt, rt))))
+```
+
+How many RTs were replaced?
+```{r}
+flanker_df_rt %>% filter(clean_rt != rt) %>% length()
+```
+
+#### Accuracy
+
+Pull out trials from test block:
+```{r}
+flanker_df_acc = flanker_df %>% filter(block == 'test')
+```
+
+### Congruency effect
+
+#### Reaction time
+
+Calculate each participant's mean RT for congruent and incongruent conditions:
+```{r}
+flanker_df_rt_congruent = flanker_df_rt %>% group_by(participant_number_fl, condition) %>% 
+  summarise(partic_mean_cond_rt = mean(clean_rt))
+```
+
+Reshape data set to wide format so there is one row per participant:
+```{r}
+flanker_df_rt_congruent = flanker_df_rt_congruent %>% 
+  spread(key = 'condition', value = 'partic_mean_cond_rt') %>%
+  rename(congruent_mean_rt = congruent, incongruent_mean_rt = incongruent)
+```
+
+Test whether there is a significant difference in RT by condition (congruent vs. incongruent):
+```{r}
+t.test(flanker_df_rt_congruent$incongruent_mean_rt, flanker_df_rt_congruent$congruent_mean_rt, paired=TRUE)
+```
+
+Calculate the congruency effect on RT for each participant:
+```{r}
+flanker_df_rt_congruent = flanker_df_rt_congruent %>% 
+  mutate(congruency_effect_rt = incongruent_mean_rt - congruent_mean_rt)
+```
+
+Look at overall mean and SD of congruency effect on RT:
+```{r}
+flanker_df_rt_congruent$overall_mean_congruency_rt = 
+  mean(na.omit(flanker_df_rt_congruent$congruency_effect_rt))
+flanker_df_rt_congruent$overall_sd_congruency_rt = 
+  sd(na.omit(flanker_df_rt_congruent$congruency_effect_rt))
+```
+
+Calculate congruency Z score for each participant for RT:
+```{r}
+flanker_df_rt_congruent = flanker_df_rt_congruent %>% 
+  mutate(flanker_congruency_z_score_rt = ((congruency_effect_rt - overall_mean_congruency_rt)/overall_sd_congruency_rt))
+```
+
+#### Accuracy
+
+Calculate each participant's accuracy for congruent and incongruent conditions:
+```{r}
+flanker_df_acc_congruent = flanker_df_acc %>% group_by(participant_number_fl, condition) %>% 
+  summarise(partic_mean_cond_acc = mean(correct))
+```
+
+Reshape data set to wide format so there is one row per participant:
+```{r}
+flanker_df_acc_congruent = flanker_df_acc_congruent %>% 
+  spread(key = 'condition', value = 'partic_mean_cond_acc') %>%
+  rename(congruent_mean_acc = congruent, incongruent_mean_acc = incongruent, nogo_mean_acc = nogo)
+```
+
+T test to see if effect of condition on accuracy is significant:
+```{r}
+t.test(flanker_df_acc_congruent$incongruent_mean_acc, flanker_df_acc_congruent$congruent_mean_acc, paired=TRUE)
+```
+
+Calculate the congruency effect on accuracy for each participant:
+```{r}
+flanker_df_acc_congruent = flanker_df_acc_congruent %>% 
+  mutate(congruency_effect_acc = incongruent_mean_acc - congruent_mean_acc)
+```
+
+Look at overall mean and SD of congruency effect on accuracy:
+```{r}
+flanker_df_acc_congruent$overall_mean_congruency_acc = 
+  mean(na.omit(flanker_df_acc_congruent$congruency_effect_acc))
+flanker_df_acc_congruent$overall_sd_congruency_acc = 
+  sd(na.omit(flanker_df_acc_congruent$congruency_effect_acc))
+```
+
+Calculate congruency Z score for each participant for accuracy:
+```{r}
+flanker_df_acc_congruent = flanker_df_acc_congruent %>% 
+  mutate(flanker_congruency_z_score_acc = ((congruency_effect_acc - overall_mean_congruency_acc)/overall_sd_congruency_acc))
+```
+
+#### Composite congruency effect
+
+Join RT and accuracy data sets:
+```{r}
+flanker_df_comp_congruent = full_join(flanker_df_rt_congruent, flanker_df_acc_congruent)
+```
+
+Calculate composite congruency effect for each participant:
+```{r}
+flanker_df_comp_congruent = flanker_df_comp_congruent %>%
+  mutate(composite_congruency_effect = ((flanker_congruency_z_score_rt + flanker_congruency_z_score_acc)/2))
+```
+
+
+### Switch effect
+
+#### Reaction time
+
+Calculate each participant's mean RT for switch and non-switch conditions:
+```{r}
+flanker_df_rt_switch = flanker_df_rt %>% 
+  group_by(participant_number_fl, switch) %>% 
+  summarise(partic_mean_switch_rt = mean(clean_rt)) %>%
+  filter(!is.na(switch))
+```
+
+Reshape data set to wide format so there is one row per participant:
+```{r}
+flanker_df_rt_switch = flanker_df_rt_switch %>% 
+  spread(key = 'switch', value = 'partic_mean_switch_rt') %>%
+  rename(switch_mean_rt = switch, nonswitch_mean_rt = nonswitch)
+```
+
+Test whether there is a significant difference in RT by switch type (switch vs. non-switch):
+```{r}
+t.test(flanker_df_rt_switch$switch_mean_rt, flanker_df_rt_switch$nonswitch_mean_rt, paired=TRUE)
+```
+
+Calculate the switch effect for each participant:
+```{r}
+flanker_df_rt_switch = flanker_df_rt_switch %>% 
+  mutate(switch_effect_rt = switch_mean_rt - nonswitch_mean_rt)
+```
+
+Look at overall mean and SD of switch effect:
+```{r}
+flanker_df_rt_switch$overall_mean_switch = 
+  mean(na.omit(flanker_df_rt_switch$switch_effect_rt))
+flanker_df_rt_switch$overall_sd_switch = 
+  sd(na.omit(flanker_df_rt_switch$switch_effect_rt))
+```
+
+Calculate switch Z score for each participant:
+```{r}
+flanker_df_rt_switch = flanker_df_rt_switch %>% 
+  mutate(flanker_switch_z_score_rt = ((switch_effect_rt - overall_mean_switch)/overall_sd_switch))
+```
+
+#### Accuracy
+
+Calculate each participant's accuracy for switch and non-switch conditions:
+```{r}
+flanker_df_acc_switch = flanker_df_acc %>% group_by(participant_number_fl, switch) %>% 
+  summarise(partic_mean_switch_acc = mean(correct))  %>%
+  filter(!is.na(switch))
+```
+
+Reshape data set to wide format so there is one row per participant:
+```{r}
+flanker_df_acc_switch = flanker_df_acc_switch %>% 
+  spread(key = 'switch', value = 'partic_mean_switch_acc') %>%
+  rename(switch_mean_acc = switch, nonswitch_mean_acc = nonswitch)
+```
+
+T test to see if effect of condition on accuracy is significant:
+```{r}
+t.test(flanker_df_acc_switch$switch_mean_acc, flanker_df_acc_switch$nonswitch_mean_acc, paired=TRUE)
+```
+
+Calculate the switch effect on accuracy for each participant:
+```{r}
+flanker_df_acc_switch = flanker_df_acc_switch %>% 
+  mutate(switch_effect_acc = switch_mean_acc - nonswitch_mean_acc)
+```
+
+Calculate overall mean and SD of switch effect on accuracy:
+```{r}
+flanker_df_acc_switch$overall_mean_switch_acc = 
+  mean(na.omit(flanker_df_acc_switch$switch_effect_acc))
+flanker_df_acc_switch$overall_sd_switch_acc = 
+  sd(na.omit(flanker_df_acc_switch$switch_effect_acc))
+```
+
+Calculate switch Z score for each participant for accuracy:
+```{r}
+flanker_df_acc_switch = flanker_df_acc_switch %>% 
+  mutate(flanker_switch_z_score_acc = ((switch_effect_acc - overall_mean_switch_acc)/overall_sd_switch_acc))
+```
+
+#### Composite switch effect
+
+Join RT and accuracy data sets:
+```{r}
+flanker_df_comp_switch = full_join(flanker_df_rt_switch, flanker_df_acc_switch)
+```
+
+Calculate composite congruency effect for each participant:
+```{r}
+flanker_df_comp_switch = flanker_df_comp_switch %>%
+  mutate(composite_switch_effect = ((flanker_switch_z_score_rt + flanker_switch_z_score_acc)/2))
+```
+
+
+### Go-nogo cost
+
+Pull out trials from test block:
+```{r}
+flanker_df_nogo = flanker_df %>% filter(block == 'test')
+```
+
+Add a column to say if participant didn't respond:
+```{r}
+flanker_df_nogo = flanker_df_nogo %>% mutate(omission = ifelse(is.na(response), 1, 0))
+```
+
+Summarize number of omissions by condition:
+```{r}
+flanker_df_nogo_omit = flanker_df_nogo %>% 
+  group_by(participant_number_fl, condition) %>% 
+  summarise(partic_sum_cond_omit = sum(omission))
+```
+
+Reshape data set to wide format so there is one row per participant:
+```{r}
+flanker_df_nogo_omit = flanker_df_nogo_omit %>% 
+  spread(key = 'condition', value = 'partic_sum_cond_omit') %>%
+  rename(congruent_omit = congruent, incongruent_omit = incongruent, nogo_omit = nogo)
+```
+
+Calculate total omission errors on go and no-go trials:
+```{r}
+flanker_df_nogo_omit = flanker_df_nogo_omit %>% 
+  mutate(omission_errors_go = congruent_omit + incongruent_omit)
+```
+
+Calculate no-go cost (omission errors on go trials minus correct omissions on no-go trials):
+```{r}
+flanker_df_nogo_omit = flanker_df_nogo_omit %>% 
+  mutate(nogo_cost = omission_errors_go - nogo_omit)
+```
+
+Calculate overall mean and SD of no-go cost:
+```{r}
+flanker_df_nogo_omit$overall_mean_nogo_cost = 
+  mean(na.omit(flanker_df_nogo_omit$nogo_cost))
+flanker_df_nogo_omit$overall_sd_nogo_cost = 
+  sd(na.omit(flanker_df_nogo_omit$nogo_cost))
+```
+
+Calculate Z score for each participant for no-go cost:
+```{r}
+flanker_df_nogo_omit = flanker_df_nogo_omit %>% 
+  mutate(nogo_cost_z_score = ((nogo_cost - overall_mean_nogo_cost)/overall_sd_nogo_cost))
+```
+
+### Combining data sets for all Flanker costs
+
+Combine all three datasets
+```{r}
+full_flanker_df = full_join(flanker_df_comp_congruent, flanker_df_comp_switch)
+full_flanker_df = full_join(full_flanker_df, flanker_df_nogo_omit)
+```
+
+
+## Relationship of Flanker performance and pointing performance
+
+We will only be analyzing children, as adults did not complete the Flanker task:
+```{r}
+participant_pointing_df = test_df_participant %>% filter(child_adult_group == 'child')
+```
+
+Calculate participants' proportion of correct points on so and but trials:
+```{r}
+participant_pointing_df = participant_pointing_df %>% 
+  mutate(partic_prop_correct_points = case_when(
+  condition == 'so' ~ partic_prop_lex_related_image_selected,
+  condition == 'but' ~ 1 - partic_prop_lex_related_image_selected
+)) %>% group_by(participant_number, condition) %>%
+  summarise(partic_prop_correct_points = partic_prop_correct_points,
+            participant_number_fl = participant_number_fl,
+            age_group = age_group)
+```
+
+Reshape to create dataframe with one row per participant:
+```{r}
+participant_pointing_df = participant_pointing_df %>% 
+  spread(key = 'condition', value = 'partic_prop_correct_points') %>%
+  rename(prop_correct_points_but = but, prop_correct_points_so = so)
+```
+
+Merge with Flanker data:
+```{r}
+participant_pointing_df = full_join(participant_pointing_df, full_flanker_df)
+```
+
+Run a regression to test whether Flanker performance predicts performance on but trials:
+```{r}
+fl_pointing_lm = lm(prop_correct_points_but ~ composite_congruency_effect + composite_switch_effect + nogo_cost + age_group + prop_correct_points_so, data = participant_pointing_df)
+summary(fl_pointing_lm)
+```
+
+
+
+
 
 
 
@@ -290,21 +635,6 @@ selection_summ = test_df %>% group_by(participant_number, TRIAL_LABEL) %>%
             CI.high = prop + 1.96*sqrt(prop*(1-prop)/total_trials_cond)) %>%
   filter(lex_related_image_selected == 1)
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
