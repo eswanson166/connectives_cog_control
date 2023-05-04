@@ -1,0 +1,348 @@
+---
+title: "Flanker cost calculation"
+author: "Elizabeth Swanson"
+date: "2023-05-04"
+output: html_document
+---
+
+# Set-up
+
+Load required packages:
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(eyetrackingR)
+library(lme4)
+library(readxl)
+library(lmerTest)
+source("helpers.R")
+theme_set(theme_bw())
+```
+
+# Loading data
+
+Load Flanker data files:
+```{r}
+flanker_df = read.csv('../data/flanker_df.csv')
+```
+
+### Flanker data prep
+
+Enter switch data as either 'switch' or 'non-switch':
+```{r}
+flanker_df = flanker_df %>% 
+  mutate(switch = case_when(
+    switch == 0 ~ 'nonswitch',
+    switch == 1 ~ 'switch'))
+```
+
+Exclude participants:
+```{r}
+flanker_df = flanker_df %>% filter(participant_number_fl != 33003236, participant_number_fl != 220323042, participant_number_fl != 2103230301)
+```
+
+
+#### Reaction time
+
+Pull out data from the test block, in conditions other than no-go, where participant answered correctly (as we are looking at RT):
+```{r}
+flanker_df_rt = flanker_df %>% filter(block == 'test', correct == 1, condition != 'nogo')
+```
+
+Calculate each participant's mean RT and sd:
+```{r}
+flanker_df_rt = flanker_df_rt %>% group_by(participant_number_fl) %>% 
+  mutate(mean_rt = mean(rt), 
+         sd_rt = sd(rt),
+         max_rt = mean_rt + 3*sd_rt,
+         min_rt = mean_rt - 3*sd_rt)
+```
+
+If participant's RT is more than 3 SDs above or below the mean, replace it with that number:
+```{r}
+flanker_df_rt = flanker_df_rt %>% mutate(clean_rt = ifelse(rt==-1, -1,
+                           ifelse(rt >= max_rt, max_rt,
+                                  ifelse(rt <= min_rt, min_rt, rt))))
+```
+
+How many RTs were replaced?
+```{r}
+flanker_df_rt %>% filter(clean_rt != rt) %>% length()
+```
+
+#### Accuracy
+
+Pull out trials from test block:
+```{r}
+flanker_df_acc = flanker_df %>% filter(block == 'test')
+```
+
+### Congruency effect
+
+#### Reaction time
+
+Calculate each participant's mean RT for congruent and incongruent conditions:
+```{r}
+flanker_df_rt_congruent = flanker_df_rt %>% group_by(participant_number_fl, condition) %>% 
+  summarise(partic_mean_cond_rt = mean(clean_rt))
+```
+
+Reshape data set to wide format so there is one row per participant:
+```{r}
+flanker_df_rt_congruent = flanker_df_rt_congruent %>% 
+  spread(key = 'condition', value = 'partic_mean_cond_rt') %>%
+  rename(congruent_mean_rt = congruent, incongruent_mean_rt = incongruent)
+```
+
+Test whether there is a significant difference in RT by condition (congruent vs. incongruent):
+```{r}
+t.test(flanker_df_rt_congruent$incongruent_mean_rt, flanker_df_rt_congruent$congruent_mean_rt, paired=TRUE)
+```
+
+Calculate the congruency effect on RT for each participant:
+```{r}
+flanker_df_rt_congruent = flanker_df_rt_congruent %>% 
+  mutate(congruency_effect_rt = incongruent_mean_rt - congruent_mean_rt)
+```
+
+Look at overall mean and SD of congruency effect on RT:
+```{r}
+flanker_df_rt_congruent$overall_mean_congruency_rt = 
+  mean(na.omit(flanker_df_rt_congruent$congruency_effect_rt))
+flanker_df_rt_congruent$overall_sd_congruency_rt = 
+  sd(na.omit(flanker_df_rt_congruent$congruency_effect_rt))
+```
+
+Calculate congruency Z score for each participant for RT:
+```{r}
+flanker_df_rt_congruent = flanker_df_rt_congruent %>% 
+  mutate(flanker_congruency_z_score_rt = ((congruency_effect_rt - overall_mean_congruency_rt)/overall_sd_congruency_rt))
+```
+
+#### Accuracy
+
+Calculate each participant's accuracy for congruent and incongruent conditions:
+```{r}
+flanker_df_acc_congruent = flanker_df_acc %>% group_by(participant_number_fl, condition) %>% 
+  summarise(partic_mean_cond_acc = mean(correct),
+            partic_mean_cond_errors = (1-partic_mean_cond_acc))
+```
+
+Reshape data set to wide format so there is one row per participant:
+```{r}
+flanker_df_errors_congruent = flanker_df_acc_congruent %>% 
+  select(-partic_mean_cond_acc) %>%
+  spread(key = 'condition', value = 'partic_mean_cond_errors') %>%
+  rename(congruent_mean_errors = congruent, incongruent_mean_errors = incongruent, nogo_mean_errors = nogo)
+```
+
+T test to see if effect of condition (congruent vs. incongruent) on accuracy is significant:
+```{r}
+t.test(flanker_df_errors_congruent$incongruent_mean_errors, flanker_df_errors_congruent$congruent_mean_errors, paired=TRUE)
+```
+
+Calculate the congruency effect on accuracy for each participant:
+```{r}
+flanker_df_errors_congruent = flanker_df_errors_congruent %>% 
+  mutate(congruency_effect_errors = incongruent_mean_errors - congruent_mean_errors)
+# is it weird that we do incongruent - congruent for accuracy when we expect congruent accuracy to be higher? 
+```
+
+Calculate overall mean and SD of congruency effect on accuracy:
+```{r}
+flanker_df_errors_congruent$overall_mean_congruency_errors = 
+  mean(na.omit(flanker_df_errors_congruent$congruency_effect_errors))
+flanker_df_errors_congruent$overall_sd_congruency_errors = 
+  sd(na.omit(flanker_df_errors_congruent$congruency_effect_errors))
+```
+
+Calculate congruency Z score for each participant for accuracy:
+```{r}
+flanker_df_errors_congruent = flanker_df_errors_congruent %>% 
+  mutate(flanker_congruency_z_score_errors = ((congruency_effect_errors - overall_mean_congruency_errors)/overall_sd_congruency_errors))
+```
+
+#### Composite congruency effect
+
+Join RT and accuracy data sets:
+```{r}
+flanker_df_comp_congruent = full_join(flanker_df_rt_congruent, flanker_df_errors_congruent)
+```
+
+Calculate composite congruency effect for each participant:
+```{r}
+flanker_df_comp_congruent = flanker_df_comp_congruent %>%
+  mutate(composite_congruency_effect = ((flanker_congruency_z_score_rt + flanker_congruency_z_score_errors)/2))
+```
+
+
+### Switch effect
+
+#### Reaction time
+
+Calculate each participant's mean RT for switch and non-switch conditions:
+```{r}
+flanker_df_rt_switch = flanker_df_rt %>% 
+  group_by(participant_number_fl, switch) %>% 
+  summarise(partic_mean_switch_rt = mean(clean_rt)) %>%
+  filter(!is.na(switch))
+```
+
+Reshape data set to wide format so there is one row per participant:
+```{r}
+flanker_df_rt_switch = flanker_df_rt_switch %>% 
+  spread(key = 'switch', value = 'partic_mean_switch_rt') %>%
+  rename(switch_mean_rt = switch, nonswitch_mean_rt = nonswitch)
+```
+
+Test whether there is a significant difference in RT by switch type (switch vs. non-switch):
+```{r}
+t.test(flanker_df_rt_switch$switch_mean_rt, flanker_df_rt_switch$nonswitch_mean_rt, paired=TRUE)
+```
+
+Calculate the switch effect for each participant:
+```{r}
+flanker_df_rt_switch = flanker_df_rt_switch %>% 
+  mutate(switch_effect_rt = switch_mean_rt - nonswitch_mean_rt)
+```
+
+Look at overall mean and SD of switch effect:
+```{r}
+flanker_df_rt_switch$overall_mean_switch = 
+  mean(na.omit(flanker_df_rt_switch$switch_effect_rt))
+flanker_df_rt_switch$overall_sd_switch = 
+  sd(na.omit(flanker_df_rt_switch$switch_effect_rt))
+```
+
+Calculate switch Z score for each participant:
+```{r}
+flanker_df_rt_switch = flanker_df_rt_switch %>% 
+  mutate(flanker_switch_z_score_rt = ((switch_effect_rt - overall_mean_switch)/overall_sd_switch))
+```
+
+#### Accuracy
+
+Calculate each participant's accuracy for switch and non-switch conditions:
+```{r}
+flanker_df_acc_switch = flanker_df_acc %>% group_by(participant_number_fl, switch) %>% 
+  summarise(partic_mean_switch_acc = mean(correct),
+            partic_mean_switch_errors = (1-partic_mean_switch_acc))  %>%
+  filter(!is.na(switch))
+```
+
+Reshape data set to wide format so there is one row per participant:
+```{r}
+flanker_df_errors_switch = flanker_df_acc_switch %>% 
+  select(-partic_mean_switch_acc) %>%
+  spread(key = 'switch', value = 'partic_mean_switch_errors') %>%
+  rename(switch_mean_errors = switch, nonswitch_mean_errors = nonswitch)
+```
+
+T test to see if effect of switch condition on accuracy is significant:
+```{r}
+t.test(flanker_df_errors_switch$switch_mean_errors, flanker_df_errors_switch$nonswitch_mean_errors, paired=TRUE)
+```
+
+Calculate the switch effect on accuracy for each participant:
+```{r}
+flanker_df_errors_switch = flanker_df_errors_switch %>% 
+  mutate(switch_effect_errors = switch_mean_errors - nonswitch_mean_errors)
+# is it weird that we do switch - nonswitch for accuracy when we expect congruent accuracy to be higher? 
+```
+
+Calculate overall mean and SD of switch effect on accuracy:
+```{r}
+flanker_df_errors_switch$overall_mean_switch_errors = 
+  mean(na.omit(flanker_df_errors_switch$switch_effect_errors))
+flanker_df_errors_switch$overall_sd_switch_errors = 
+  sd(na.omit(flanker_df_errors_switch$switch_effect_errors))
+```
+
+Calculate switch Z score for each participant for accuracy:
+```{r}
+flanker_df_errors_switch = flanker_df_errors_switch %>% 
+  mutate(flanker_switch_z_score_errors = ((switch_effect_errors - overall_mean_switch_errors)/overall_sd_switch_errors))
+```
+
+#### Composite switch effect
+
+Join RT and accuracy data sets:
+```{r}
+flanker_df_comp_switch = full_join(flanker_df_rt_switch, flanker_df_errors_switch)
+```
+
+Calculate composite switch effect for each participant:
+```{r}
+flanker_df_comp_switch = flanker_df_comp_switch %>%
+  mutate(composite_switch_effect = ((flanker_switch_z_score_rt + flanker_switch_z_score_errors)/2))
+```
+
+
+### Go-nogo cost
+
+Pull out trials from test block:
+```{r}
+flanker_df_nogo = flanker_df %>% filter(block == 'test')
+```
+
+Add a column to say if participant didn't respond:
+```{r}
+flanker_df_nogo = flanker_df_nogo %>% mutate(omission = ifelse(is.na(response), 1, 0))
+```
+
+Summarize number of omissions by condition:
+```{r}
+flanker_df_nogo_omit = flanker_df_nogo %>% 
+  group_by(participant_number_fl, condition) %>% 
+  summarise(partic_sum_cond_omit = sum(omission))
+```
+
+Reshape data set to wide format so there is one row per participant:
+```{r}
+flanker_df_nogo_omit = flanker_df_nogo_omit %>% 
+  spread(key = 'condition', value = 'partic_sum_cond_omit') %>%
+  rename(congruent_omit = congruent, incongruent_omit = incongruent, nogo_omit = nogo)
+# 31032337 never omitted - exclude?
+```
+
+Calculate total omission errors on go and no-go trials:
+```{r}
+flanker_df_nogo_omit = flanker_df_nogo_omit %>% 
+  mutate(omission_errors_go = congruent_omit + incongruent_omit)
+```
+
+Calculate no-go cost (omission errors on go trials minus correct omissions on no-go trials):
+```{r}
+flanker_df_nogo_omit = flanker_df_nogo_omit %>% 
+  mutate(nogo_cost = omission_errors_go - nogo_omit)
+# should this be done with proportions?
+```
+
+Calculate overall mean and SD of no-go cost:
+```{r}
+flanker_df_nogo_omit$overall_mean_nogo_cost = 
+  mean(na.omit(flanker_df_nogo_omit$nogo_cost))
+flanker_df_nogo_omit$overall_sd_nogo_cost = 
+  sd(na.omit(flanker_df_nogo_omit$nogo_cost))
+```
+
+Calculate Z score for each participant for no-go cost:
+```{r}
+flanker_df_nogo_omit = flanker_df_nogo_omit %>% 
+  mutate(nogo_cost_z_score = ((nogo_cost - overall_mean_nogo_cost)/overall_sd_nogo_cost))
+```
+
+### Combining data sets for all Flanker costs
+
+Combine all three datasets
+```{r}
+full_flanker_df = full_join(flanker_df_comp_congruent, flanker_df_comp_switch)
+full_flanker_df = full_join(full_flanker_df, flanker_df_nogo_omit)
+```
+
+Write full Flanker cost data to a csv for analysis:
+```{r}
+write.csv(full_flanker_df, '../data/full_flanker_df.csv')
+```
+
+

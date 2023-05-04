@@ -14,6 +14,7 @@ library(tidyverse)
 library(eyetrackingR)
 library(lme4)
 library(readxl)
+library(lmerTest)
 source("helpers.R")
 theme_set(theme_bw())
 ```
@@ -60,10 +61,6 @@ et_data$lex_related_image_selected[et_data$participant_number == 12042303 & et_d
 et_data$lex_related_image_selected[et_data$participant_number == 17032305 & et_data$TRIAL_LABEL == 'Trial: 16'] = 1
 et_data$lex_related_image_selected[et_data$participant_number == 22032306 & et_data$TRIAL_LABEL == 'Trial: 1'] = 1
 et_data$lex_related_image_selected[et_data$participant_number == 10042305 & et_data$TRIAL_LABEL == 'Trial: 1'] = 0
-
-
-
-# note: try to figure out why 31032302 is excluded
 ```
 
 Make eye-tracking data:
@@ -74,7 +71,7 @@ et_df = make_eyetrackingr_data(et_data,
                        time_column = 'time_since_connective_onset',
                        aoi_columns = c('AVERAGE_IA_1_SAMPLE_COUNT_.', 'AVERAGE_IA_2_SAMPLE_COUNT_.'),
                        treat_non_aoi_looks_as_missing = TRUE,
-                       trackloss_column = 'AVERAGE_IA_0_SAMPLE_COUNT_.'
+                       trackloss_column = 'AVERAGE_OFF_SCREEN_SAMPLE_COUNT_.'
                        )
 ```
 
@@ -126,7 +123,6 @@ flanker_df = flanker_df %>% filter(!is.na(participant_number))
 length(unique(flanker_df$participant_number_fl))
 ```
 
-
 ## Exclusions
 
 Exclude participants who were distracted, bilingual, etc:
@@ -152,6 +148,15 @@ Exclude these participants from Flanker data too:
 flanker_df = flanker_df %>% filter(participant_number %in% et_df$participant_number)
 ```
 
+Write Flanker data to a separate file since we will calculate Flanker costs separately:
+```{r}
+write.csv(flanker_df, '../data/flanker_df.csv')
+```
+
+Flanker cost calculations are done in a separate script so load that data:
+```{r}
+full_flanker_df = read.csv('../data/full_flanker_df.csv')
+```
 
 # Data visualization
 
@@ -178,7 +183,7 @@ plot(df_timecourse, predictor_column = "condition") + theme_bw() +  theme(text =
   ylim(0,1) +
   xlim(-1000, 4000) +
   facet_wrap(~age_group) +
-  #annotate("text", x=-130, y=.99, label="connective \nonset", size=3.5) +
+  annotate("text", x=-150, y=.9, label="connective \nonset", size = 2) +
   xlab("Time since connective onset (ms)") +
   ylab("Proportion of looks to lexically related image") +
   ggtitle("Proportion of looks to lexically related image by condition")
@@ -188,19 +193,66 @@ ggsave('timecourse_age_group.pdf', path = '../graphs', height = 6, width = 8)
 
 Make time course graph for children vs. adults:
 ```{r}
-plot(df_timecourse, predictor_column = "condition") + theme_bw() +  theme(text = element_text(size = 10)) +  
+plot(df_timecourse, predictor_column = "condition") + theme_bw() +  
+  theme(text = element_text(size = 10)) +  
   geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
   geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
   ylim(0,1) +
   xlim(-500, 4000) +
   facet_wrap(~child_adult_group) +
-  #annotate("text", x=-130, y=.99, label="connective \nonset", size=3.5) +
+  annotate("text", x=-150, y=.9, label="connective \nonset", size = 2) +
   xlab("Time since connective onset (ms)") +
   ylab("Proportion of looks to lexically related image") +
   ggtitle("Proportion of looks to lexically related image by condition")
 
 ggsave('timecourse_child_adult.pdf', path = '../graphs', height = 6, width = 8)
 ```
+
+## Cluster analysis
+
+Separate time course data into children vs. adults:
+```{r}
+df_timecourse_children = df_timecourse %>% filter(child_adult_group == 'child')
+df_timecourse_adult = df_timecourse %>% filter(child_adult_group == 'adult')
+```
+
+
+Make time cluster data for children:
+```{r}
+df_timeclust_children = make_time_cluster_data(df_timecourse_children,
+                                      test= "t.test",
+                                      predictor_column = "condition",
+                                      aoi = "AVERAGE_IA_1_SAMPLE_COUNT_.",
+                                      threshold = 1.5,
+                                      formula = ArcSin ~ condition)
+```
+
+Plot time cluster data for children:
+```{r}
+plot(df_timeclust_children, predictor_column = "condition") + theme_bw() +  
+  theme(text = element_text(size = 10)) + 
+  geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
+  geom_vline(xintercept=0, colour="black",size=I(1.5),show.legend = FALSE)
+```
+
+Make time cluster data for adults:
+```{r}
+df_timeclust_adult = make_time_cluster_data(df_timecourse_adult,
+                                      test= "t.test",
+                                      predictor_column = "condition",
+                                      aoi = "AVERAGE_IA_1_SAMPLE_COUNT_.",
+                                      threshold = 1.5,
+                                      formula = ArcSin ~ condition)
+```
+
+Plot time cluster data for adults:
+```{r}
+plot(df_timeclust_adult, predictor_column = "condition") + theme_bw() +  
+  theme(text = element_text(size = 10)) + 
+  geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
+  geom_vline(xintercept=0, colour="black",size=I(1.5),show.legend = FALSE)
+```
+
 
 ## Explicit selection data
 
@@ -270,326 +322,146 @@ ggsave('selection_age_group_line.pdf', path = '../graphs', height = 4, width = 6
 
 # Data analysis
 
-## Flanker task data
+## Pointing performance
 
-### Flanker data prep
-
-Enter switch data as either 'switch' or 'non-switch':
+Create a column for accuracy on each pointing trial:
 ```{r}
-flanker_df = flanker_df %>% 
-  mutate(switch = case_when(
-    switch == 0 ~ 'nonswitch',
-    switch == 1 ~ 'switch'))
+test_df_trial = test_df_trial %>% 
+  mutate(correct_point = case_when(
+  condition == 'so' & lex_related_image_selected == 1 ~ TRUE,
+  condition == 'but' & lex_related_image_selected == 0 ~ TRUE,
+  TRUE ~ FALSE
+  ))
 ```
 
-#### Reaction time
-
-Pull out data from the test block, in conditions other than no-go, where participant answered correctly (as we are looking at RT):
+Run a mixed model to see if condition predicts pointing to lexically related image:
 ```{r}
-flanker_df_rt = flanker_df %>% filter(block == 'test', correct == 1, condition != 'nogo')
+pointing_lm = lmer(lex_related_image_selected ~ condition +
+                     (1|participant_number) + (1|novelword), 
+                   data = test_df_trial)
+summary(pointing_lm)
 ```
 
-Calculate each participant's mean RT and sd:
+Run a mixed model to see if condition and age group predict pointing to lexically related image:
 ```{r}
-flanker_df_rt = flanker_df_rt %>% group_by(participant_number_fl) %>% 
-  mutate(mean_rt = mean(rt), 
-         sd_rt = sd(rt),
-         max_rt = mean_rt + 3*sd_rt,
-         min_rt = mean_rt - 3*sd_rt)
+pointing_age_lm = lmer(lex_related_image_selected ~ condition + age_group +
+                     (1|participant_number) + (1|novelword), 
+                   data = test_df_trial)
+summary(pointing_age_lm)
 ```
 
-If participant's RT is more than 3 SDs above or below the mean, replace it with that number:
+## Proportion of looks
+
+Pull out looking data from after connective onset:
 ```{r}
-flanker_df_rt = flanker_df_rt %>% mutate(clean_rt = ifelse(rt=="-1", "-1",
-                           ifelse(rt >= max_rt, max_rt,
-                                  ifelse(rt <= min_rt, min_rt, rt))))
+window_test_df = subset_by_window(test_df, 
+                                  window_start_time = 0,
+                                  window_end_time = 4000)
 ```
 
-How many RTs were replaced?
+Remove trackloss-ridden trials:
 ```{r}
-flanker_df_rt %>% filter(clean_rt != rt) %>% length()
-```
-
-#### Accuracy
-
-Pull out trials from test block:
-```{r}
-flanker_df_acc = flanker_df %>% filter(block == 'test')
-```
-
-### Congruency effect
-
-#### Reaction time
-
-Calculate each participant's mean RT for congruent and incongruent conditions:
-```{r}
-flanker_df_rt_congruent = flanker_df_rt %>% group_by(participant_number_fl, condition) %>% 
-  summarise(partic_mean_cond_rt = mean(clean_rt))
-```
-
-Reshape data set to wide format so there is one row per participant:
-```{r}
-flanker_df_rt_congruent = flanker_df_rt_congruent %>% 
-  spread(key = 'condition', value = 'partic_mean_cond_rt') %>%
-  rename(congruent_mean_rt = congruent, incongruent_mean_rt = incongruent)
-```
-
-Test whether there is a significant difference in RT by condition (congruent vs. incongruent):
-```{r}
-t.test(flanker_df_rt_congruent$incongruent_mean_rt, flanker_df_rt_congruent$congruent_mean_rt, paired=TRUE)
-```
-
-Calculate the congruency effect on RT for each participant:
-```{r}
-flanker_df_rt_congruent = flanker_df_rt_congruent %>% 
-  mutate(congruency_effect_rt = incongruent_mean_rt - congruent_mean_rt)
-```
-
-Look at overall mean and SD of congruency effect on RT:
-```{r}
-flanker_df_rt_congruent$overall_mean_congruency_rt = 
-  mean(na.omit(flanker_df_rt_congruent$congruency_effect_rt))
-flanker_df_rt_congruent$overall_sd_congruency_rt = 
-  sd(na.omit(flanker_df_rt_congruent$congruency_effect_rt))
-```
-
-Calculate congruency Z score for each participant for RT:
-```{r}
-flanker_df_rt_congruent = flanker_df_rt_congruent %>% 
-  mutate(flanker_congruency_z_score_rt = ((congruency_effect_rt - overall_mean_congruency_rt)/overall_sd_congruency_rt))
-```
-
-#### Accuracy
-
-Calculate each participant's accuracy for congruent and incongruent conditions:
-```{r}
-flanker_df_acc_congruent = flanker_df_acc %>% group_by(participant_number_fl, condition) %>% 
-  summarise(partic_mean_cond_acc = mean(correct))
-```
-
-Reshape data set to wide format so there is one row per participant:
-```{r}
-flanker_df_acc_congruent = flanker_df_acc_congruent %>% 
-  spread(key = 'condition', value = 'partic_mean_cond_acc') %>%
-  rename(congruent_mean_acc = congruent, incongruent_mean_acc = incongruent, nogo_mean_acc = nogo)
-```
-
-T test to see if effect of condition on accuracy is significant:
-```{r}
-t.test(flanker_df_acc_congruent$incongruent_mean_acc, flanker_df_acc_congruent$congruent_mean_acc, paired=TRUE)
-```
-
-Calculate the congruency effect on accuracy for each participant:
-```{r}
-flanker_df_acc_congruent = flanker_df_acc_congruent %>% 
-  mutate(congruency_effect_acc = incongruent_mean_acc - congruent_mean_acc)
-```
-
-Look at overall mean and SD of congruency effect on accuracy:
-```{r}
-flanker_df_acc_congruent$overall_mean_congruency_acc = 
-  mean(na.omit(flanker_df_acc_congruent$congruency_effect_acc))
-flanker_df_acc_congruent$overall_sd_congruency_acc = 
-  sd(na.omit(flanker_df_acc_congruent$congruency_effect_acc))
-```
-
-Calculate congruency Z score for each participant for accuracy:
-```{r}
-flanker_df_acc_congruent = flanker_df_acc_congruent %>% 
-  mutate(flanker_congruency_z_score_acc = ((congruency_effect_acc - overall_mean_congruency_acc)/overall_sd_congruency_acc))
-```
-
-#### Composite congruency effect
-
-Join RT and accuracy data sets:
-```{r}
-flanker_df_comp_congruent = full_join(flanker_df_rt_congruent, flanker_df_acc_congruent)
-```
-
-Calculate composite congruency effect for each participant:
-```{r}
-flanker_df_comp_congruent = flanker_df_comp_congruent %>%
-  mutate(composite_congruency_effect = ((flanker_congruency_z_score_rt + flanker_congruency_z_score_acc)/2))
+window_test_df_clean <- clean_by_trackloss(data = window_test_df, trial_prop_thresh = .25)
 ```
 
 
-### Switch effect
-
-#### Reaction time
-
-Calculate each participant's mean RT for switch and non-switch conditions:
+Pull out trials with looks to the lexically or non-lexically related image:
 ```{r}
-flanker_df_rt_switch = flanker_df_rt %>% 
-  group_by(participant_number_fl, switch) %>% 
-  summarise(partic_mean_switch_rt = mean(clean_rt)) %>%
-  filter(!is.na(switch))
+#test_df_prop_looks = test_df %>% filter(AVERAGE_IA_1_SAMPLE_COUNT != 0 | 
+                                          #AVERAGE_IA_2_SAMPLE_COUNT != 0)
 ```
 
-Reshape data set to wide format so there is one row per participant:
+Calculate each participant's proportion of looks to the lexically related image over the trial:
 ```{r}
-flanker_df_rt_switch = flanker_df_rt_switch %>% 
-  spread(key = 'switch', value = 'partic_mean_switch_rt') %>%
-  rename(switch_mean_rt = switch, nonswitch_mean_rt = nonswitch)
+window_test_df_partic = make_time_window_data(window_test_df, 
+                                              aois = 'AVERAGE_IA_1_SAMPLE_COUNT_.',
+                                              predictor_columns = c("condition", "age_group", "child_adult_group"), 
+                                              summarize_by = "participant_number")
 ```
 
-Test whether there is a significant difference in RT by switch type (switch vs. non-switch):
+Plot raw prop looking data by age group:
 ```{r}
-t.test(flanker_df_rt_switch$switch_mean_rt, flanker_df_rt_switch$nonswitch_mean_rt, paired=TRUE)
+plot(window_test_df_partic, predictor_columns = c("condition"), dv = "Prop") + theme_bw() +
+  facet_wrap(~age_group) +
+  ylim(0,1) +
+  xlab("Condition") +
+  ylab("Proportion of looks to lexically related image") +
+  ggtitle("Proportion of looks to lexically related image by condition")
+
+ggsave('timecluster_age_group.pdf', path = '../graphs', height = 6, width = 8)
 ```
 
-Calculate the switch effect for each participant:
+Plot raw prop looking data for children vs. adults:
 ```{r}
-flanker_df_rt_switch = flanker_df_rt_switch %>% 
-  mutate(switch_effect_rt = switch_mean_rt - nonswitch_mean_rt)
+plot(window_test_df_partic, predictor_columns = c("condition"), dv = "Prop") + theme_bw() +
+  facet_wrap(~child_adult_group) +
+  ylim(0,1) +
+  xlab("Condition") +
+  ylab("Proportion of looks to lexically related image") +
+  ggtitle("Proportion of looks to lexically related image by condition")
+
+ggsave('timecluster_child_adult_group.pdf', path = '../graphs', height = 6, width = 8)
 ```
 
-Look at overall mean and SD of switch effect:
+Pull out just ArcSin-transformed prop of looks for adults and children:
 ```{r}
-flanker_df_rt_switch$overall_mean_switch = 
-  mean(na.omit(flanker_df_rt_switch$switch_effect_rt))
-flanker_df_rt_switch$overall_sd_switch = 
-  sd(na.omit(flanker_df_rt_switch$switch_effect_rt))
+prop_looks_partic_child = window_test_df_partic %>% select(participant_number, condition, age_group, child_adult_group, ArcSin) %>% filter(child_adult_group == 'child') %>%
+  spread(key = 'condition', value = 'ArcSin') %>%
+  rename(arcsin_prop_looks_but = but, arcsin_prop_looks_so = so)
+
+prop_looks_partic_adult = window_test_df_partic %>% select(participant_number, condition, age_group, child_adult_group, ArcSin) %>% filter(child_adult_group == 'adult') %>%
+  spread(key = 'condition', value = 'ArcSin') %>%
+  rename(arcsin_prop_looks_but = but, arcsin_prop_looks_so = so)
 ```
 
-Calculate switch Z score for each participant:
+T test to see if there is a significant difference in proportion of looks to lexically related image by condition for children:
 ```{r}
-flanker_df_rt_switch = flanker_df_rt_switch %>% 
-  mutate(flanker_switch_z_score_rt = ((switch_effect_rt - overall_mean_switch)/overall_sd_switch))
+t.test(prop_looks_partic_child$arcsin_prop_looks_so, prop_looks_partic_child$arcsin_prop_looks_but, paired = TRUE)
+t.test(prop_looks_partic_adult$arcsin_prop_looks_so, prop_looks_partic_adult$arcsin_prop_looks_but, paired = TRUE)
 ```
 
-#### Accuracy
-
-Calculate each participant's accuracy for switch and non-switch conditions:
+Pull out just raw prop of looks for adults and children:
 ```{r}
-flanker_df_acc_switch = flanker_df_acc %>% group_by(participant_number_fl, switch) %>% 
-  summarise(partic_mean_switch_acc = mean(correct))  %>%
-  filter(!is.na(switch))
+#raw_prop_looks_partic_child = window_test_df_partic %>% select(participant_number, condition, age_group, child_adult_group, Prop) %>% filter(child_adult_group == 'child') %>%
+  #spread(key = 'condition', value = 'Prop') %>%
+  #rename(raw_prop_looks_but = but, raw_prop_looks_so = so)
+
+#raw_prop_looks_partic_adult = window_test_df_partic %>% select(participant_number, condition, age_group, child_adult_group, Prop) %>% filter(child_adult_group == 'adult') %>%
+ # spread(key = 'condition', value = 'Prop') %>%
+  #rename(raw_prop_looks_but = but, raw_prop_looks_so = so)
 ```
-
-Reshape data set to wide format so there is one row per participant:
-```{r}
-flanker_df_acc_switch = flanker_df_acc_switch %>% 
-  spread(key = 'switch', value = 'partic_mean_switch_acc') %>%
-  rename(switch_mean_acc = switch, nonswitch_mean_acc = nonswitch)
-```
-
-T test to see if effect of condition on accuracy is significant:
-```{r}
-t.test(flanker_df_acc_switch$switch_mean_acc, flanker_df_acc_switch$nonswitch_mean_acc, paired=TRUE)
-```
-
-Calculate the switch effect on accuracy for each participant:
-```{r}
-flanker_df_acc_switch = flanker_df_acc_switch %>% 
-  mutate(switch_effect_acc = switch_mean_acc - nonswitch_mean_acc)
-```
-
-Calculate overall mean and SD of switch effect on accuracy:
-```{r}
-flanker_df_acc_switch$overall_mean_switch_acc = 
-  mean(na.omit(flanker_df_acc_switch$switch_effect_acc))
-flanker_df_acc_switch$overall_sd_switch_acc = 
-  sd(na.omit(flanker_df_acc_switch$switch_effect_acc))
-```
-
-Calculate switch Z score for each participant for accuracy:
-```{r}
-flanker_df_acc_switch = flanker_df_acc_switch %>% 
-  mutate(flanker_switch_z_score_acc = ((switch_effect_acc - overall_mean_switch_acc)/overall_sd_switch_acc))
-```
-
-#### Composite switch effect
-
-Join RT and accuracy data sets:
-```{r}
-flanker_df_comp_switch = full_join(flanker_df_rt_switch, flanker_df_acc_switch)
-```
-
-Calculate composite congruency effect for each participant:
-```{r}
-flanker_df_comp_switch = flanker_df_comp_switch %>%
-  mutate(composite_switch_effect = ((flanker_switch_z_score_rt + flanker_switch_z_score_acc)/2))
-```
-
-
-### Go-nogo cost
-
-Pull out trials from test block:
-```{r}
-flanker_df_nogo = flanker_df %>% filter(block == 'test')
-```
-
-Add a column to say if participant didn't respond:
-```{r}
-flanker_df_nogo = flanker_df_nogo %>% mutate(omission = ifelse(is.na(response), 1, 0))
-```
-
-Summarize number of omissions by condition:
-```{r}
-flanker_df_nogo_omit = flanker_df_nogo %>% 
-  group_by(participant_number_fl, condition) %>% 
-  summarise(partic_sum_cond_omit = sum(omission))
-```
-
-Reshape data set to wide format so there is one row per participant:
-```{r}
-flanker_df_nogo_omit = flanker_df_nogo_omit %>% 
-  spread(key = 'condition', value = 'partic_sum_cond_omit') %>%
-  rename(congruent_omit = congruent, incongruent_omit = incongruent, nogo_omit = nogo)
-```
-
-Calculate total omission errors on go and no-go trials:
-```{r}
-flanker_df_nogo_omit = flanker_df_nogo_omit %>% 
-  mutate(omission_errors_go = congruent_omit + incongruent_omit)
-```
-
-Calculate no-go cost (omission errors on go trials minus correct omissions on no-go trials):
-```{r}
-flanker_df_nogo_omit = flanker_df_nogo_omit %>% 
-  mutate(nogo_cost = omission_errors_go - nogo_omit)
-```
-
-Calculate overall mean and SD of no-go cost:
-```{r}
-flanker_df_nogo_omit$overall_mean_nogo_cost = 
-  mean(na.omit(flanker_df_nogo_omit$nogo_cost))
-flanker_df_nogo_omit$overall_sd_nogo_cost = 
-  sd(na.omit(flanker_df_nogo_omit$nogo_cost))
-```
-
-Calculate Z score for each participant for no-go cost:
-```{r}
-flanker_df_nogo_omit = flanker_df_nogo_omit %>% 
-  mutate(nogo_cost_z_score = ((nogo_cost - overall_mean_nogo_cost)/overall_sd_nogo_cost))
-```
-
-### Combining data sets for all Flanker costs
-
-Combine all three datasets
-```{r}
-full_flanker_df = full_join(flanker_df_comp_congruent, flanker_df_comp_switch)
-full_flanker_df = full_join(full_flanker_df, flanker_df_nogo_omit)
-```
-
 
 ## Relationship of Flanker performance and pointing performance
 
+Read in Flanker and pointing data:
+```{r}
+test_df_participant = read.csv('test_df_participant.csv', stringsAsFactors = TRUE)
+full_flanker_df = read.csv('full_flanker_data.csv', stringsAsFactors = TRUE)
+```
+
+
+Create a column for accuracy on pointing trials:
+```{r}
+participant_pointing_df = test_df_participant %>% 
+  mutate(partic_prop_correct_points = case_when(
+  condition == 'so' ~ partic_prop_lex_related_image_selected,
+  condition == 'but' ~ (1 - partic_prop_lex_related_image_selected)))
+```
+
+
 We will only be analyzing children, as adults did not complete the Flanker task:
 ```{r}
-participant_pointing_df = test_df_participant %>% filter(child_adult_group == 'child')
+participant_pointing_df = participant_pointing_df %>% filter(child_adult_group == 'child')
 ```
 
 Calculate participants' proportion of correct points on so and but trials:
 ```{r}
 participant_pointing_df = participant_pointing_df %>% 
-  mutate(partic_prop_correct_points = case_when(
-  condition == 'so' ~ partic_prop_lex_related_image_selected,
-  condition == 'but' ~ 1 - partic_prop_lex_related_image_selected
-)) %>% group_by(participant_number, condition) %>%
+  group_by(participant_number, condition) %>%
   summarise(partic_prop_correct_points = partic_prop_correct_points,
             participant_number_fl = participant_number_fl,
-            age_group = age_group)
+            age_group = age_group,
+            age_months = age_months)
 ```
 
 Reshape to create dataframe with one row per participant:
@@ -604,11 +476,128 @@ Merge with Flanker data:
 participant_pointing_df = full_join(participant_pointing_df, full_flanker_df)
 ```
 
+Change age to z-score:
+```{r}
+participant_pointing_df$mean_age_months = mean(participant_pointing_df$age_months)
+participant_pointing_df$sd_age_months = sd(participant_pointing_df$age_months)
+participant_pointing_df = participant_pointing_df %>% 
+  mutate(age_months_z_score = (age_months - mean_age_months)/sd_age_months)
+```
+
+Change proportion correct points for but to z-scores:
+```{r}
+participant_pointing_df$mean_prop_correct_points_but = mean(participant_pointing_df$prop_correct_points_but)
+participant_pointing_df$sd_prop_correct_points_but = sd(participant_pointing_df$prop_correct_points_but)
+participant_pointing_df = participant_pointing_df %>% 
+  mutate(prop_correct_points_but_z_score = ((prop_correct_points_but - mean_prop_correct_points_but)/sd_prop_correct_points_but))
+```
+
+Change proportion correct points for so to z-scores:
+```{r}
+participant_pointing_df$mean_prop_correct_points_so = mean(participant_pointing_df$prop_correct_points_so)
+participant_pointing_df$sd_prop_correct_points_so = sd(participant_pointing_df$prop_correct_points_so)
+participant_pointing_df = participant_pointing_df %>% 
+  mutate(prop_correct_points_so_z_score = ((prop_correct_points_so - mean_prop_correct_points_so)/sd_prop_correct_points_so))
+```
+
+
 Run a regression to test whether Flanker performance predicts performance on but trials:
 ```{r}
-fl_pointing_lm = lm(prop_correct_points_but ~ composite_congruency_effect + composite_switch_effect + nogo_cost + age_group + prop_correct_points_so, data = participant_pointing_df)
+fl_pointing_lm = lm(prop_correct_points_but_z_score ~ composite_congruency_effect + composite_switch_effect + nogo_cost_z_score + age_months_z_score + prop_correct_points_so_z_score, data = participant_pointing_df)
 summary(fl_pointing_lm)
 ```
+
+Try without combining RT and acc z-scores:
+```{r}
+fl_pointing_separate_lm = lm(prop_correct_points_but_z_score ~ flanker_congruency_z_score_rt + flanker_congruency_z_score_errors + flanker_switch_z_score_rt + flanker_switch_z_score_errors +  nogo_cost_z_score + age_months_z_score + prop_correct_points_so_z_score, data = participant_pointing_df)
+summary(fl_pointing_separate_lm)
+```
+
+
+## Relationship of Flanker performance and looking to lexically related image
+
+Merge Flanker data and proportion of looks data:
+```{r}
+prop_looks_partic_fl = left_join(prop_looks_partic_child, participant_df)
+prop_looks_partic_fl = full_join(prop_looks_partic_fl, full_flanker_df)
+```
+
+Calculate z-score for proportion of looks to correct image on so trials:
+```{r}
+prop_looks_partic_fl$mean_arcsin_prop_looks_but = mean(prop_looks_partic_fl$arcsin_prop_looks_but)
+prop_looks_partic_fl$sd_arcsin_prop_looks_but = sd(prop_looks_partic_fl$arcsin_prop_looks_but)
+prop_looks_partic_fl = prop_looks_partic_fl %>% 
+  mutate(arcsin_prop_looks_but_z_score = ((arcsin_prop_looks_but - mean_arcsin_prop_looks_but)/sd_arcsin_prop_looks_but))
+```
+
+Calculate z-score for proportion of looks to correct image on but trials:
+```{r}
+prop_looks_partic_fl$mean_arcsin_prop_looks_so = mean(prop_looks_partic_fl$arcsin_prop_looks_so)
+prop_looks_partic_fl$sd_arcsin_prop_looks_so = sd(prop_looks_partic_fl$arcsin_prop_looks_so)
+prop_looks_partic_fl = prop_looks_partic_fl %>% 
+  mutate(arcsin_prop_looks_so_z_score = ((arcsin_prop_looks_so - mean_arcsin_prop_looks_so)/sd_arcsin_prop_looks_so))
+```
+
+Change age to z-score:
+```{r}
+prop_looks_partic_fl$mean_age_months = mean(prop_looks_partic_fl$age_months)
+prop_looks_partic_fl$sd_age_months = sd(prop_looks_partic_fl$age_months)
+prop_looks_partic_fl = prop_looks_partic_fl %>% 
+  mutate(age_months_z_score = (age_months - mean_age_months)/sd_age_months)
+```
+
+Run a regression to test whether Flanker performance predicts looking performance on but trials:
+```{r}
+fl_looking_lm = lm(arcsin_prop_looks_but_z_score ~ composite_congruency_effect + composite_switch_effect + nogo_cost_z_score + age_months_z_score + arcsin_prop_looks_so_z_score, data = prop_looks_partic_fl)
+summary(fl_looking_lm)
+```
+
+Try without combining RT and acc z-scores:
+```{r}
+fl_looking_separate_lm = lm(arcsin_prop_looks_but_z_score ~ flanker_congruency_z_score_rt + flanker_congruency_z_score_errors + flanker_switch_z_score_rt + flanker_switch_z_score_errors +  nogo_cost_z_score + age_months_z_score + arcsin_prop_looks_so_z_score, data = prop_looks_partic_fl)
+summary(fl_looking_separate_lm)
+```
+
+
+Try predicting correct points on so trials:
+```{r}
+fl_pointing_so_lm = lm(prop_correct_points_so ~ composite_congruency_effect + composite_switch_effect +  nogo_cost_z_score + age_group, data = participant_pointing_df)
+summary(fl_pointing_so_lm)
+```
+
+Try without combining RT and acc z-scores:
+```{r}
+fl_pointing_so_sep_lm = lm(prop_correct_points_so ~ flanker_congruency_z_score_rt + flanker_congruency_z_score_acc + flanker_switch_z_score_rt + flanker_switch_z_score_acc +  nogo_cost_z_score + age_group, data = participant_pointing_df)
+summary(fl_pointing_so_sep_lm)
+```
+
+
+Putting but prop errors in z-score:
+```{r}
+participant_pointing_df = participant_pointing_df %>% mutate(
+  prop_but_errors = 1 - prop_correct_points_but
+)
+participant_pointing_df$overall_mean_prop_but_errors = mean(na.omit(participant_pointing_df$prop_but_errors))
+participant_pointing_df$overall_sd_prop_but_errors = sd(na.omit(participant_pointing_df$prop_but_errors))
+participant_pointing_df = participant_pointing_df %>% mutate(
+  prop_but_errors_z_score = ((prop_but_errors - overall_mean_prop_but_errors)/overall_sd_prop_but_errors),
+)
+```
+
+Run a regression to test whether Flanker performance predicts but errors:
+```{r}
+fl_pointing_but_error_lm = lm(prop_but_errors_z_score ~ composite_congruency_effect + composite_switch_effect + nogo_cost_z_score + age_group + prop_correct_points_so, data = participant_pointing_df)
+summary(fl_pointing_but_error_lm)
+```
+
+Try without combining RT and acc z-scores:
+```{r}
+fl_pointing_but_error_sep_lm = lm(prop_but_errors_z_score ~ flanker_congruency_z_score_rt + flanker_congruency_z_score_acc + flanker_switch_z_score_rt + flanker_switch_z_score_acc +  nogo_cost_z_score + age_group, data = participant_pointing_df)
+summary(fl_pointing_but_error_sep_lm)
+```
+
+
+
 
 
 
