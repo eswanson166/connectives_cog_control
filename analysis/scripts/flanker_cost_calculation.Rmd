@@ -112,6 +112,7 @@ Test whether there is a significant difference in RT by condition (congruent vs.
 ```{r}
 t.test(flanker_df_rt_congruent$incongruent_mean_rt, flanker_df_rt_congruent$congruent_mean_rt, paired=TRUE)
 ```
+Children had significantly lower RTs in the congruent condition than the incongruent condition.
 
 Calculate the congruency effect on RT for each participant:
 ```{r}
@@ -145,49 +146,50 @@ flanker_df_acc_congruent = flanker_df_acc %>% group_by(participant_number_fl, co
 
 Reshape data set to wide format so there is one row per participant:
 ```{r}
-flanker_df_errors_congruent = flanker_df_acc_congruent %>% 
-  select(-partic_cond_mean_acc) %>%
-  spread(key = 'condition', value = 'partic_cond_mean_errors') %>%
-  rename(congruent_mean_errors = congruent, incongruent_mean_errors = incongruent, 
-         nogo_mean_errors = nogo)
+flanker_df_acc_congruent = flanker_df_acc_congruent %>% 
+  select(-partic_cond_mean_errors) %>%
+  spread(key = 'condition', value = 'partic_cond_mean_acc') %>%
+  rename(congruent_mean_acc = congruent, incongruent_mean_acc = incongruent, 
+         nogo_mean_acc = nogo)
 ```
 
 T test to see if effect of condition (congruent vs. incongruent) on accuracy is significant:
 ```{r}
-t.test(flanker_df_errors_congruent$incongruent_mean_errors, flanker_df_errors_congruent$congruent_mean_errors, paired=TRUE)
+t.test(flanker_df_acc_congruent$congruent_mean_acc, flanker_df_acc_congruent$incongruent_mean_acc, paired=TRUE)
 ```
+Children were significantly more accurate on congruent trials than incongruent trials.
 
 Calculate the congruency effect on accuracy for each participant:
 ```{r}
-flanker_df_errors_congruent = flanker_df_errors_congruent %>% 
-  mutate(congruency_effect_errors = incongruent_mean_errors - congruent_mean_errors)
+flanker_df_acc_congruent = flanker_df_acc_congruent %>% 
+  mutate(congruency_effect_acc = congruent_mean_acc - incongruent_mean_acc)
 ```
 
 Calculate overall mean and SD of congruency effect on accuracy:
 ```{r}
-flanker_df_errors_congruent$overall_mean_congruency_errors = 
-  mean(flanker_df_errors_congruent$congruency_effect_errors)
-flanker_df_errors_congruent$overall_sd_congruency_errors = 
-  sd(flanker_df_errors_congruent$congruency_effect_errors)
+flanker_df_acc_congruent$overall_mean_congruency_acc = 
+  mean(flanker_df_acc_congruent$congruency_effect_acc)
+flanker_df_acc_congruent$overall_sd_congruency_acc = 
+  sd(flanker_df_acc_congruent$congruency_effect_acc)
 ```
 
 Calculate congruency Z score for each participant for accuracy:
 ```{r}
-flanker_df_errors_congruent = flanker_df_errors_congruent %>% 
-  mutate(flanker_congruency_errors_z_score = ((congruency_effect_errors - overall_mean_congruency_errors)/overall_sd_congruency_errors))
+flanker_df_acc_congruent = flanker_df_acc_congruent %>% 
+  mutate(flanker_congruency_acc_z_score = ((congruency_effect_acc - overall_mean_congruency_acc)/overall_sd_congruency_acc))
 ```
 
 #### Composite congruency effect
 
 Join RT and accuracy data sets:
 ```{r}
-flanker_df_comp_congruent = full_join(flanker_df_rt_congruent, flanker_df_errors_congruent)
+flanker_df_comp_congruent = full_join(flanker_df_rt_congruent, flanker_df_acc_congruent)
 ```
 
 Calculate composite congruency effect for each participant:
 ```{r}
 flanker_df_comp_congruent = flanker_df_comp_congruent %>%
-  mutate(composite_congruency_effect = ((flanker_congruency_rt_z_score + flanker_congruency_errors_z_score)/2))
+  mutate(composite_congruency_effect = ((flanker_congruency_rt_z_score + flanker_congruency_acc_z_score)/2))
 ```
 
 
@@ -214,6 +216,7 @@ Test whether there is a significant difference in RT by switch type (switch vs. 
 ```{r}
 t.test(flanker_df_rt_switch$switch_mean_rt, flanker_df_rt_switch$nonswitch_mean_rt, paired=TRUE)
 ```
+Children had significantly lower RTs in non-switch trials than in switch trials.
 
 Calculate the switch effect for each participant:
 ```{r}
@@ -247,103 +250,103 @@ flanker_df_acc_switch = flanker_df_acc %>% group_by(participant_number_fl, switc
 
 Reshape data set to wide format so there is one row per participant:
 ```{r}
-flanker_df_errors_switch = flanker_df_acc_switch %>% 
-  select(-partic_switch_mean_acc) %>%
-  spread(key = 'switch', value = 'partic_switch_mean_errors') %>%
-  rename(switch_mean_errors = switch, nonswitch_mean_errors = nonswitch)
+flanker_df_acc_switch = flanker_df_acc_switch %>% 
+  select(-partic_switch_mean_errors) %>%
+  spread(key = 'switch', value = 'partic_switch_mean_acc') %>%
+  rename(switch_mean_acc = switch, nonswitch_mean_acc = nonswitch)
 ```
 
 T test to see if effect of switch condition on accuracy is significant:
 ```{r}
-t.test(flanker_df_errors_switch$switch_mean_errors, flanker_df_errors_switch$nonswitch_mean_errors, paired=TRUE)
+t.test(flanker_df_acc_switch$nonswitch_mean_acc, flanker_df_acc_switch$switch_mean_acc, paired=TRUE)
 ```
+There is not a significant difference in accuracy between switch and non-switch trials.
 
 Calculate the switch effect on accuracy for each participant:
 ```{r}
-flanker_df_errors_switch = flanker_df_errors_switch %>% 
-  mutate(switch_effect_errors = switch_mean_errors - nonswitch_mean_errors)
+flanker_df_acc_switch = flanker_df_acc_switch %>% 
+  mutate(switch_effect_acc = nonswitch_mean_acc - switch_mean_acc)
 ```
 
 Calculate overall mean and SD of switch effect on accuracy:
 ```{r}
-flanker_df_errors_switch$overall_mean_switch_errors = 
-  mean(flanker_df_errors_switch$switch_effect_errors)
-flanker_df_errors_switch$overall_sd_switch_errors = 
-  sd(flanker_df_errors_switch$switch_effect_errors)
+flanker_df_acc_switch$overall_mean_switch_acc = 
+  mean(flanker_df_acc_switch$switch_effect_acc)
+flanker_df_acc_switch$overall_sd_switch_acc = 
+  sd(flanker_df_acc_switch$switch_effect_acc)
 ```
 
 Calculate switch Z score for each participant for accuracy:
 ```{r}
-flanker_df_errors_switch = flanker_df_errors_switch %>% 
-  mutate(flanker_switch_errors_z_score = ((switch_effect_errors - overall_mean_switch_errors)/overall_sd_switch_errors))
+flanker_df_acc_switch = flanker_df_acc_switch %>% 
+  mutate(flanker_switch_acc_z_score = ((switch_effect_acc - overall_mean_switch_acc)/overall_sd_switch_acc))
 ```
 
 #### Composite switch effect
 
 Join RT and accuracy data sets:
 ```{r}
-flanker_df_comp_switch = full_join(flanker_df_rt_switch, flanker_df_errors_switch)
+flanker_df_comp_switch = full_join(flanker_df_rt_switch, flanker_df_acc_switch)
 ```
 
 Calculate composite switch effect for each participant:
 ```{r}
 flanker_df_comp_switch = flanker_df_comp_switch %>%
-  mutate(composite_switch_effect = ((flanker_switch_rt_z_score + flanker_switch_errors_z_score)/2))
+  mutate(composite_switch_effect = ((flanker_switch_rt_z_score + flanker_switch_acc_z_score)/2))
 ```
 
 
 ### Go-nogo cost
 
-Pull out trials from test block:
+Pull out trials from test block and create column saying whether trial was go or no-go:
 ```{r}
-flanker_df_nogo = flanker_df %>% filter(block == 'test')
+flanker_df_nogo = flanker_df %>% filter(block == 'test') %>% 
+  mutate(go_nogo = case_when(
+    condition == 'congruent' ~ 'go',
+    condition == 'incongruent' ~ 'go',
+    condition == 'nogo' ~ 'nogo'
+  ))
 ```
 
-Add a column to say if participant didn't respond:
+Calculate accuracy by trial type (go vs. no-go):
 ```{r}
-flanker_df_nogo = flanker_df_nogo %>% mutate(omission = ifelse(is.na(response), 1, 0))
+flanker_df_acc_nogo = flanker_df_nogo %>% group_by(participant_number_fl, go_nogo) %>% 
+  summarise(partic_go_nogo_mean_acc = mean(correct))
 ```
 
-Summarize number of omissions by condition:
+Reshape data set to wide format so there is one row per participant, and add errors column:
 ```{r}
-flanker_df_nogo = flanker_df_nogo %>% 
-  group_by(participant_number_fl, condition) %>% 
-  summarise(partic_cond_omit = sum(omission))
+flanker_df_acc_nogo = flanker_df_acc_nogo %>% 
+  spread(key = 'go_nogo', value = 'partic_go_nogo_mean_acc') %>%
+  rename(go_mean_acc = go, nogo_mean_acc = nogo) %>%
+  mutate(go_mean_errors = 1-go_mean_acc,
+         nogo_mean_errors = 1-nogo_mean_acc)
 ```
 
-Reshape data set to wide format so there is one row per participant:
+T test to see if effect of go/no-go condition on accuracy is significant:
 ```{r}
-flanker_df_nogo = flanker_df_nogo %>% 
-  spread(key = 'condition', value = 'partic_cond_omit') %>%
-  rename(congruent_omit = congruent, incongruent_omit = incongruent, nogo_omit = nogo)
-# 31032337 never omitted - exclude?
+t.test(flanker_df_acc_nogo$go_mean_acc, flanker_df_acc_nogo$nogo_mean_acc, paired=TRUE)
+```
+There is not a significant difference between the go and no-go conditions.
+
+Calculate the no-go cost on accuracy for each participant:
+```{r}
+flanker_df_acc_nogo = flanker_df_acc_nogo %>% 
+  mutate(nogo_effect = nogo_mean_errors - go_mean_acc)
 ```
 
-Calculate total omission errors on go and no-go trials:
+Calculate overall mean and SD of go/no-go effect on accuracy:
 ```{r}
-flanker_df_nogo = flanker_df_nogo %>% 
-  mutate(omission_errors_go = congruent_omit + incongruent_omit)
+flanker_df_acc_nogo$overall_mean_nogo_effect = 
+  mean(flanker_df_acc_nogo$nogo_effect)
+flanker_df_acc_nogo$overall_sd_nogo_effect = 
+  sd(flanker_df_acc_nogo$nogo_effect)
 ```
 
-Calculate no-go cost (omission errors on go trials minus correct omissions on no-go trials):
+Calculate go/no-go Z score for each participant for accuracy:
 ```{r}
-flanker_df_nogo = flanker_df_nogo %>% 
-  mutate(nogo_cost = omission_errors_go - nogo_omit)
-# should this be done with proportions?
-```
-
-Calculate overall mean and SD of no-go cost:
-```{r}
-flanker_df_nogo$overall_mean_nogo_cost = 
-  mean(flanker_df_nogo$nogo_cost)
-flanker_df_nogo$overall_sd_nogo_cost = 
-  sd(flanker_df_nogo$nogo_cost)
-```
-
-Calculate Z score for each participant for no-go cost:
-```{r}
-flanker_df_nogo = flanker_df_nogo %>% 
-  mutate(nogo_cost_z_score = ((nogo_cost - overall_mean_nogo_cost)/overall_sd_nogo_cost))
+flanker_df_acc_nogo = flanker_df_acc_nogo %>% 
+  mutate(flanker_nogo_effect_z_score = ((nogo_effect - overall_mean_nogo_effect)/overall_sd_nogo_effect))
 ```
 
 ### Combining data sets for all Flanker costs
@@ -351,7 +354,7 @@ flanker_df_nogo = flanker_df_nogo %>%
 Combine all three datasets
 ```{r}
 full_flanker_df = full_join(flanker_df_comp_congruent, flanker_df_comp_switch)
-full_flanker_df = full_join(full_flanker_df, flanker_df_nogo)
+full_flanker_df = full_join(full_flanker_df, flanker_df_acc_nogo)
 full_flanker_df = left_join(full_flanker_df, participant_df)
 ```
 

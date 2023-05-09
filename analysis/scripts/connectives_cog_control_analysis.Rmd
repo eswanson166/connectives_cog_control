@@ -1,5 +1,5 @@
 ---
-title: 'Connectives and cognitive control: Data analysis'
+title: 'Connectives and cognitive control: Data analysis and visualization'
 author: "Elizabeth Swanson"
 date: "2023-04-26"
 output: html_document
@@ -32,6 +32,8 @@ Prepare eye-tracking data:
 ```{r}
 raw_eye_data$time_since_connective_onset = raw_eye_data$BIN_START_TIME - 1000
 # change this if you generate timebin report starting at a point other than 1000s before connective onset
+
+#raw_eye_data$time_since_point = raw_eye_data$BIN_START_TIME - as.numeric(raw_eye_data$rt)
 
 raw_eye_data$participant_number = raw_eye_data$RECORDING_SESSION_LABEL
 raw_eye_data$list = as.numeric(raw_eye_data$list)
@@ -100,6 +102,7 @@ Merge eye-tracking data and participant data:
 ```{r}
 raw_eye_data = left_join(raw_eye_data, participant_df)
 raw_eye_data$lex_related_image_selected = as.numeric(raw_eye_data$lex_related_image_selected)
+#raw_eye_data$rt = as.numeric(raw_eye_data$rt)
 ```
 
 Merge Flanker data and participant data:
@@ -118,6 +121,9 @@ length(unique(flanker_df$participant_number_fl))
 Exclude participants who were distracted, bilingual, etc:
 ```{r}
 eye_data = raw_eye_data %>% filter(exclude == "no")
+
+# DELETE: exclude participants with long RTs on pointing:
+#eye_data = eye_data %>% filter(as.numeric(rt) <= 10000)
 ```
 
 Exclude participants who didn't complete more than half the trials:
@@ -155,8 +161,9 @@ Make eye-tracking data:
 eye_tr_df = make_eyetrackingr_data(eye_data, 
                        participant_column = 'RECORDING_SESSION_LABEL',
                        trial_column = 'trialnumber',
-                       time_column = 'time_since_connective_onset',
-                       aoi_columns = c('AVERAGE_IA_1_SAMPLE_COUNT_.', 'AVERAGE_IA_2_SAMPLE_COUNT_.'),
+                       time_column = 'time_since_connective_onset', 
+                       aoi_columns = c('AVERAGE_IA_1_SAMPLE_COUNT_.',
+                                       'AVERAGE_IA_2_SAMPLE_COUNT_.'),
                        treat_non_aoi_looks_as_missing = TRUE,
                        trackloss_column = 'AVERAGE_OFF_SCREEN_SAMPLE_COUNT_.'
                        )
@@ -175,7 +182,7 @@ Assess mean trackloss per participant:
 trackloss_clean_partic <- unique(trackloss_clean[, c('RECORDING_SESSION_LABEL','TracklossForParticipant')])
 ```
 
-Get mean and SD of samples contributed per trial:
+Get mean and SD of proportion of samples contributed per trial:
 ```{r}
 mean(1 - trackloss_clean_partic$TracklossForParticipant)
 sd(1- trackloss_clean_partic$TracklossForParticipant)
@@ -191,18 +198,31 @@ Pull out test trials:
 test_df = eye_df_clean %>% filter(practicestatus == "test")
 ```
 
-Make time sequence data:
+Create a column for accuracy on each pointing trial:
 ```{r}
-df_timecourse <- make_time_sequence_data(test_df, time_bin_size = 1, 
-                                         predictor_columns = c("condition", "age_group",
-                                                               "child_adult_group"),
+test_df = test_df %>% 
+  mutate(correct_point = case_when(
+  condition == 'so' & lex_related_image_selected == 1 ~ TRUE,
+  condition == 'but' & lex_related_image_selected == 0 ~ TRUE,
+  TRUE ~ FALSE
+  ),
+  lex_related_image_pointed = case_when(
+  lex_related_image_selected == TRUE ~ 'Chose related image',
+  lex_related_image_selected == FALSE ~ 'Chose unrelated image'
+  ))
+```
+
+Make time sequence data with age group as predictor:
+```{r}
+df_timecourse_age_group <- make_time_sequence_data(test_df, time_bin_size = 1, 
+                                         predictor_columns = c("condition", "age_group"),
                                          aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
                                          summarize_by = "participant_number")
 ```
 
 Make time course graph by age group:
 ```{r}
-plot(df_timecourse, predictor_column = "condition") + theme_bw() +  
+plot(df_timecourse_age_group, predictor_column = "condition") + theme_bw() +  
   theme(text = element_text(size = 10)) +  
   geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
   geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
@@ -217,9 +237,19 @@ plot(df_timecourse, predictor_column = "condition") + theme_bw() +
 ggsave('timecourse_age_group.pdf', path = '../graphs', height = 6, width = 10)
 ```
 
+Make time sequence data with child/adult group as predictor:
+```{r}
+df_timecourse_child_adult_group <- make_time_sequence_data(test_df, time_bin_size = 1, 
+                                         predictor_columns = c("condition",
+                                                               "child_adult_group"),
+                                         aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
+                                         summarize_by = "participant_number")
+
+```
+
 Make time course graph for children vs. adults:
 ```{r}
-plot(df_timecourse, predictor_column = "condition") + theme_bw() +  
+plot(df_timecourse_child_adult_group, predictor_column = "condition") + theme_bw() +  
   theme(text = element_text(size = 10)) +  
   geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
   geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
@@ -234,12 +264,50 @@ plot(df_timecourse, predictor_column = "condition") + theme_bw() +
 ggsave('timecourse_child_adult.pdf', path = '../graphs', height = 6, width = 10)
 ```
 
+Make time sequence data with child/adult group and correct/incorrect point as predictors:
+```{r}
+df_timecourse_pointing_child_adult <- make_time_sequence_data(test_df, time_bin_size = 1, 
+                                         predictor_columns = c("condition",
+                                                               "child_adult_group",
+                                                               "lex_related_image_pointed"),
+                                         aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
+                                         summarize_by = "participant_number")
+
+```
+
+Make time course graph for children vs. adults and correct vs. incorrect points:
+```{r}
+plot(df_timecourse_pointing_child_adult, predictor_column = "condition") + theme_bw() +  
+  theme(text = element_text(size = 10)) +  
+  geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
+  geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
+  ylim(0,1) +
+  xlim(-500, 4000) +
+  facet_grid(rows = vars(lex_related_image_pointed), cols = vars(child_adult_group)) +
+  annotate("text", x=-150, y=.9, label="connective \nonset", size = 2.5) +
+  xlab("Time since connective onset (ms)") +
+  ylab("Proportion of looks to lexically related image") +
+  ggtitle("Proportion of looks to lexically related image by condition")
+
+ggsave('timecourse_pointing_child_adult.pdf', path = '../graphs', height = 6, width = 10)
+```
+
+
 ## Cluster analysis
 
 Separate time course data into children vs. adults:
 ```{r}
-df_timecourse_children = df_timecourse %>% filter(child_adult_group == 'child')
-df_timecourse_adult = df_timecourse %>% filter(child_adult_group == 'adult')
+df_timecourse_children = test_df %>% 
+  filter(child_adult_group == "child") %>%
+  make_time_sequence_data(time_bin_size = 1, predictor_columns = c("condition"),
+                                         aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
+                                         summarize_by = "participant_number")
+
+df_timecourse_adult = test_df %>% 
+  filter(child_adult_group == "adult") %>%
+  make_time_sequence_data(time_bin_size = 1, predictor_columns = c("condition"),
+                                         aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
+                                         summarize_by = "participant_number")
 ```
 
 Make time cluster data for children:
@@ -266,6 +334,8 @@ plot(df_timeclust_children, predictor_column = "condition") + theme_bw() +
   xlab("Time since connective onset (ms)") +
   ylab("Cluster T test statistic") +
   ggtitle("T test statistic for difference in looks to lexically related image by condition:\n Children")
+
+ggsave('timecluster_children.pdf', path = '../graphs', height = 4, width = 6)
 ```
 
 Make time cluster data for adults:
@@ -292,11 +362,13 @@ plot(df_timeclust_adult, predictor_column = "condition") + theme_bw() +
   xlab("Time since connective onset (ms)") +
   ylab("Cluster T test statistic") +
   ggtitle("T test statistic for difference in looks to lexically related image by condition:\n Adults")
+
+ggsave('timecluster_adult.pdf', path = '../graphs', height = 4, width = 6)
 ```
 
 ## Explicit selection data
 
-Create dataframe with one row per trial per participant:
+Create dataframe with one row per trial per participant and calculate participant's proportion of trials per condition with lexically related image selected:
 ```{r}
 test_df_trial = test_df %>% group_by(participant_number, TRIAL_LABEL) %>%
   filter(row_number() == 1) %>%
@@ -366,16 +438,6 @@ ggsave('selection_age_group_line.pdf', path = '../graphs', height = 4, width = 6
 
 ## Pointing data
 
-Create a column for accuracy on each pointing trial:
-```{r}
-test_df_trial = test_df_trial %>% 
-  mutate(correct_point = case_when(
-  condition == 'so' & lex_related_image_selected == 1 ~ TRUE,
-  condition == 'but' & lex_related_image_selected == 0 ~ TRUE,
-  TRUE ~ FALSE
-  ))
-```
-
 Run a mixed model to see if condition predicts pointing to lexically related image:
 ```{r}
 pointing_lm = lmer(lex_related_image_selected ~ condition +
@@ -394,7 +456,7 @@ summary(pointing_age_lm)
 
 ## Proportion of looks
 
-Pull out looking data from after connective onset:
+Pull out looking data during window where there was a significant time cluster (change start time to 0 and end time to 4000 if you want to examine full window after connective onset):
 ```{r}
 window_test_df = subset_by_window(test_df, 
                                   window_start_time = 900,
@@ -403,7 +465,7 @@ window_test_df = subset_by_window(test_df,
 # change start time to 0 and end time to 4000 if you want to examine full window after connective onset
 ```
 
-Calculate each participant's proportion of looks to the lexically related image over the trial:
+Calculate each participant's mean proportion of looks to the lexically related image over the trial:
 ```{r}
 window_test_df_partic = make_time_window_data(window_test_df, 
                                               aois = 'AVERAGE_IA_1_SAMPLE_COUNT_.',
@@ -452,6 +514,7 @@ T test to see if there is a significant difference in proportion of looks to lex
 t.test(prop_looks_partic_child$arcsin_prop_looks_so, prop_looks_partic_child$arcsin_prop_looks_but, paired = TRUE)
 t.test(prop_looks_partic_adult$arcsin_prop_looks_so, prop_looks_partic_adult$arcsin_prop_looks_but, paired = TRUE)
 ```
+Both children and adults looked significantly more at the lexically related image in the so condition than the but condition.
 
 Make a version of data with CORRECT looks on so and but trials:
 ```{r}
@@ -470,19 +533,19 @@ window_test_df_partic_acc = window_test_df_partic_acc %>%
            (condition == 'but' & AOI == 'AVERAGE_IA_2_SAMPLE_COUNT_.'))
 ```
 
-Pull out just arcsin-transformed prop of looks to correct image for adults and children (we will use this for the relationship to Flanker data later):
+Pull out just raw prop of looks to correct image for adults and children (we will use this for the relationship to Flanker data later):
 ```{r}
 prop_looks_acc_partic_child = window_test_df_partic_acc %>% 
-  select(participant_number, condition, age_group, child_adult_group, ArcSin) %>%
+  select(participant_number, condition, age_group, child_adult_group, Prop) %>%
   filter(child_adult_group == 'child') %>%
-  spread(key = 'condition', value = 'ArcSin') %>%
-  rename(arcsin_prop_correct_looks_but = but, arcsin_prop_correct_looks_so = so)
+  spread(key = 'condition', value = 'Prop') %>%
+  rename(prop_correct_looks_but = but, prop_correct_looks_so = so)
 
 prop_looks_acc_partic_adult = window_test_df_partic_acc %>% 
-  select(participant_number, condition, age_group, child_adult_group, ArcSin) %>%
+  select(participant_number, condition, age_group, child_adult_group, Prop) %>%
   filter(child_adult_group == 'adult') %>%
-  spread(key = 'condition', value = 'ArcSin') %>%
-  rename(arcsin_prop_correct_looks_but = but, arcsin_prop_correct_looks_so = so)
+  spread(key = 'condition', value = 'Prop') %>%
+  rename(prop_correct_looks_but = but, prop_correct_looks_so = so)
 ```
 
 ## Relationship of Flanker performance and pointing performance
@@ -542,14 +605,14 @@ pointing_df_participant = pointing_df_participant %>%
 
 Run a regression to test whether Flanker performance predicts performance on but trials:
 ```{r}
-fl_pointing_lm = lm(prop_correct_points_but_z_score ~ composite_congruency_effect + composite_switch_effect + nogo_cost_z_score + age_months_z_score + prop_correct_points_so_z_score, 
+fl_pointing_lm = lm(prop_correct_points_but_z_score ~ composite_congruency_effect + composite_switch_effect + flanker_nogo_effect_z_score + age_months_z_score + prop_correct_points_so_z_score, 
                     data = pointing_df_participant)
 summary(fl_pointing_lm)
 ```
 
 Try without combining RT and acc z-scores:
 ```{r}
-fl_pointing_separate_lm = lm(prop_correct_points_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_errors_z_score + flanker_switch_rt_z_score + flanker_switch_errors_z_score +  nogo_cost_z_score + age_months_z_score + prop_correct_points_so_z_score, 
+fl_pointing_separate_lm = lm(prop_correct_points_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + prop_correct_points_so_z_score, 
                              data = pointing_df_participant)
 summary(fl_pointing_separate_lm)
 ```
@@ -565,99 +628,46 @@ prop_looks_acc_partic_fl = right_join(prop_looks_acc_partic_fl, full_flanker_df)
 
 Calculate z-score for proportion of looks to correct image on so trials:
 ```{r}
-prop_looks_acc_partic_fl$mean_arcsin_prop_correct_looks_so = mean(prop_looks_acc_partic_fl$arcsin_prop_correct_looks_so)
-prop_looks_acc_partic_fl$sd_arcsin_prop_correct_looks_so = sd(prop_looks_acc_partic_fl$arcsin_prop_correct_looks_so)
+prop_looks_acc_partic_fl$mean_prop_correct_looks_so = mean(prop_looks_acc_partic_fl$prop_correct_looks_so)
+prop_looks_acc_partic_fl$sd_prop_correct_looks_so = sd(prop_looks_acc_partic_fl$prop_correct_looks_so)
 
 prop_looks_acc_partic_fl = prop_looks_acc_partic_fl %>% 
-  mutate(arcsin_prop_correct_looks_so_z_score = ((arcsin_prop_correct_looks_so - mean_arcsin_prop_correct_looks_so)/sd_arcsin_prop_correct_looks_so))
+  mutate(prop_correct_looks_so_z_score = ((prop_correct_looks_so - mean_prop_correct_looks_so)/sd_prop_correct_looks_so))
 ```
 
 Calculate z-score for proportion of looks to correct image on but trials:
 ```{r}
-prop_looks_acc_partic_fl$mean_arcsin_prop_correct_looks_but = mean(prop_looks_acc_partic_fl$arcsin_prop_correct_looks_but)
-prop_looks_acc_partic_fl$sd_arcsin_prop_correct_looks_but = sd(prop_looks_acc_partic_fl$arcsin_prop_correct_looks_but)
+prop_looks_acc_partic_fl$mean_prop_correct_looks_but = mean(prop_looks_acc_partic_fl$prop_correct_looks_but)
+prop_looks_acc_partic_fl$sd_prop_correct_looks_but = sd(prop_looks_acc_partic_fl$prop_correct_looks_but)
 
 prop_looks_acc_partic_fl = prop_looks_acc_partic_fl %>% 
-  mutate(arcsin_prop_correct_looks_but_z_score = ((arcsin_prop_correct_looks_but - mean_arcsin_prop_correct_looks_but)/sd_arcsin_prop_correct_looks_but))
+  mutate(prop_correct_looks_but_z_score = ((prop_correct_looks_but - mean_prop_correct_looks_but)/sd_prop_correct_looks_but))
 ```
 
 Run a regression to test whether Flanker performance predicts looking performance on but trials:
 ```{r}
-fl_looking_lm = lm(arcsin_prop_correct_looks_but_z_score ~ composite_congruency_effect + composite_switch_effect + nogo_cost_z_score + age_months_z_score + arcsin_prop_correct_looks_so_z_score, data = prop_looks_acc_partic_fl)
+fl_looking_lm = lm(prop_correct_looks_but_z_score ~ composite_congruency_effect + composite_switch_effect + flanker_nogo_effect_z_score + age_months_z_score + prop_correct_looks_so_z_score, data = prop_looks_acc_partic_fl)
 summary(fl_looking_lm)
 ```
 
 Try without combining RT and acc z-scores:
 ```{r}
-fl_looking_separate_lm = lm(arcsin_prop_correct_looks_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_errors_z_score + flanker_switch_rt_z_score + flanker_switch_errors_z_score +  nogo_cost_z_score + age_months_z_score + arcsin_prop_correct_looks_so_z_score, data = prop_looks_acc_partic_fl)
+fl_looking_separate_lm = lm(prop_correct_looks_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + prop_correct_looks_so_z_score, data = prop_looks_acc_partic_fl)
 summary(fl_looking_separate_lm)
 ```
 
 Try without performance on so trials as a predictor, with composites:
 ```{r}
-fl_looking_no_so_lm = lm(arcsin_prop_correct_looks_but_z_score ~ composite_congruency_effect + composite_switch_effect + nogo_cost_z_score + age_months_z_score, data = prop_looks_acc_partic_fl)
+fl_looking_no_so_lm = lm(prop_correct_looks_but_z_score ~ composite_congruency_effect + composite_switch_effect + flanker_nogo_effect_z_score + age_months_z_score, data = prop_looks_acc_partic_fl)
 summary(fl_looking_no_so_lm)
 ```
 
 Try without combining RT and acc z-scores and without performance on so trials:
 ```{r}
-fl_looking_separate_no_so_lm = lm(arcsin_prop_correct_looks_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_errors_z_score + flanker_switch_rt_z_score + flanker_switch_errors_z_score +  nogo_cost_z_score + age_months_z_score, data = prop_looks_acc_partic_fl)
+fl_looking_separate_no_so_lm = lm(prop_correct_looks_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score, data = prop_looks_acc_partic_fl)
 summary(fl_looking_separate_no_so_lm)
 ```
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-SCRATCH:
-
-Summarize number of trials on each condition for which participants selected the lexically related image (OLD VERSION WITH ALL TRIALS TOGETHER)
-```{r}
-selection_summ = test_df %>% group_by(participant_number, TRIAL_LABEL) %>%
-  filter(row_number() == 1) %>%
-  group_by(condition, age_group) %>%
-  mutate(total_trials_cond = n()) %>%
-  group_by(condition, lex_related_image_selected, age_group) %>%
-  summarise(n = n(), total_trials_cond = unique(total_trials_cond), 
-            prop = unique(n()/total_trials_cond),
-            CI.low = prop - 1.96*sqrt(prop*(1-prop)/total_trials_cond),
-            CI.high = prop + 1.96*sqrt(prop*(1-prop)/total_trials_cond)) %>%
-  filter(lex_related_image_selected == 1)
-```
-
-
-Putting but prop errors in z-score:
-```{r}
-participant_pointing_df = participant_pointing_df %>% mutate(
-  prop_but_errors = 1 - prop_correct_points_but
-)
-participant_pointing_df$overall_mean_prop_but_errors = mean(na.omit(participant_pointing_df$prop_but_errors))
-participant_pointing_df$overall_sd_prop_but_errors = sd(na.omit(participant_pointing_df$prop_but_errors))
-participant_pointing_df = participant_pointing_df %>% mutate(
-  prop_but_errors_z_score = ((prop_but_errors - overall_mean_prop_but_errors)/overall_sd_prop_but_errors),
-)
-```
-
-Run a regression to test whether Flanker performance predicts but errors:
-```{r}
-fl_pointing_but_error_lm = lm(prop_but_errors_z_score ~ composite_congruency_effect + composite_switch_effect + nogo_cost_z_score + age_group + prop_correct_points_so, data = participant_pointing_df)
-summary(fl_pointing_but_error_lm)
-```
-
-Try without combining RT and acc z-scores:
-```{r}
-fl_pointing_but_error_sep_lm = lm(prop_but_errors_z_score ~ flanker_congruency_z_score_rt + flanker_congruency_z_score_acc + flanker_switch_z_score_rt + flanker_switch_z_score_acc +  nogo_cost_z_score + age_group, data = participant_pointing_df)
-summary(fl_pointing_but_error_sep_lm)
-```
 
 
