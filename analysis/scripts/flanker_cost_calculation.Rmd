@@ -147,7 +147,7 @@ flanker_df_acc_congruent = flanker_df_acc %>% group_by(participant_number_fl, co
 Reshape data set to wide format so there is one row per participant:
 ```{r}
 flanker_df_acc_congruent = flanker_df_acc_congruent %>% 
-  select(-partic_cond_mean_errors) %>%
+  select(-partic_cond_mean_errors) %>% # we don't need errors if we're looking at accuracy
   spread(key = 'condition', value = 'partic_cond_mean_acc') %>%
   rename(congruent_mean_acc = congruent, incongruent_mean_acc = incongruent, 
          nogo_mean_acc = nogo)
@@ -224,18 +224,18 @@ flanker_df_rt_switch = flanker_df_rt_switch %>%
   mutate(switch_effect_rt = switch_mean_rt - nonswitch_mean_rt)
 ```
 
-Look at overall mean and SD of switch effect:
+Look at overall mean and SD of switch effect for RT:
 ```{r}
-flanker_df_rt_switch$overall_mean_switch = 
+flanker_df_rt_switch$overall_mean_switch_rt = 
   mean(flanker_df_rt_switch$switch_effect_rt)
-flanker_df_rt_switch$overall_sd_switch = 
+flanker_df_rt_switch$overall_sd_switch_rt = 
   sd(flanker_df_rt_switch$switch_effect_rt)
 ```
 
 Calculate switch Z score for each participant:
 ```{r}
 flanker_df_rt_switch = flanker_df_rt_switch %>% 
-  mutate(flanker_switch_rt_z_score = ((switch_effect_rt - overall_mean_switch)/overall_sd_switch))
+  mutate(flanker_switch_rt_z_score = ((switch_effect_rt - overall_mean_switch_rt)/overall_sd_switch_rt))
 ```
 
 #### Switch effect on accuracy
@@ -251,7 +251,7 @@ flanker_df_acc_switch = flanker_df_acc %>% group_by(participant_number_fl, switc
 Reshape data set to wide format so there is one row per participant:
 ```{r}
 flanker_df_acc_switch = flanker_df_acc_switch %>% 
-  select(-partic_switch_mean_errors) %>%
+  select(-partic_switch_mean_errors) %>% # we don't need errors if we're looking at accuracy
   spread(key = 'switch', value = 'partic_switch_mean_acc') %>%
   rename(switch_mean_acc = switch, nonswitch_mean_acc = nonswitch)
 ```
@@ -308,6 +308,96 @@ flanker_df_nogo = flanker_df %>% filter(block == 'test') %>%
   ))
 ```
 
+Add column marking whether child omitted response:
+```{r}
+flanker_df_nogo = flanker_df_nogo %>% mutate(omission = case_when(
+  is.na(response) ~ TRUE,
+  TRUE ~ FALSE
+))
+```
+
+Calculate proportion of omissions on go vs. no-go trials:
+```{r}
+flanker_df_omit_nogo = flanker_df_nogo %>% group_by(participant_number_fl, go_nogo) %>%
+  summarise(partic_gonogo_mean_omit = mean(omission),
+            partic_gonogo_mean_response = 1-partic_gonogo_mean_omit)
+```
+
+Reshape data set to wide format so there is one row per participant:
+```{r}
+flanker_df_omit_nogo = flanker_df_omit_nogo %>% 
+  select(-partic_gonogo_mean_response) %>%
+  spread(key = 'go_nogo', value = 'partic_gonogo_mean_omit') %>%
+  rename(go_mean_omit = go, nogo_mean_omit = nogo)
+```
+
+T test to see if effect of go/no-go condition on omissions is significant:
+```{r}
+t.test(flanker_df_omit_nogo$go_mean_omit, flanker_df_omit_nogo$nogo_mean_omit, paired=TRUE)
+```
+There is a significant difference in omissions between go and no-go trials.
+
+Calculate the switch effect on accuracy for each participant:
+```{r}
+flanker_df_omit_nogo = flanker_df_omit_nogo %>% 
+  mutate(nogo_effect = go_mean_omit - nogo_mean_omit)
+```
+
+Calculate overall mean and SD of go/no-go effect on accuracy:
+```{r}
+flanker_df_omit_nogo$overall_mean_nogo_effect = 
+  mean(flanker_df_omit_nogo$nogo_effect)
+flanker_df_omit_nogo$overall_sd_nogo_effect = 
+  sd(flanker_df_omit_nogo$nogo_effect)
+```
+
+Calculate go/no-go Z score for each participant for accuracy:
+```{r}
+flanker_df_omit_nogo = flanker_df_omit_nogo %>% 
+  mutate(flanker_nogo_effect_z_score = ((nogo_effect - overall_mean_nogo_effect)/overall_sd_nogo_effect))
+```
+
+### Combining data sets for all Flanker costs
+
+Combine all three datasets
+```{r}
+full_flanker_df = full_join(flanker_df_comp_congruent, flanker_df_comp_switch)
+full_flanker_df = full_join(full_flanker_df, flanker_df_omit_nogo)
+full_flanker_df = left_join(full_flanker_df, participant_df)
+```
+
+Calculate Z score for age in months:
+```{r}
+full_flanker_df$mean_age_months = mean(full_flanker_df$age_months)
+full_flanker_df$sd_age_months = sd(full_flanker_df$age_months)
+full_flanker_df = full_flanker_df %>% 
+  mutate(age_months_z_score = (age_months - mean_age_months)/sd_age_months)
+```
+
+Write full Flanker cost data to a csv for analysis:
+```{r}
+write.csv(full_flanker_df, '../data/full_flanker_df.csv')
+```
+
+
+```{r}
+flanker_df_acc_overall = flanker_df %>% filter(condition == 'congruent' | condition == 'incongruent') %>% group_by(participant_number_fl) %>% mutate(partic_mean_acc_go = mean(correct)) %>%
+  group_by(participant_number_fl) %>% filter(row_number() == 1)
+flanker_df_acc_overall = left_join(flanker_df_acc_overall, flanker_df_omit_nogo)
+cor(na.omit(flanker_df_acc_overall$partic_mean_acc_go), na.omit(flanker_df_acc_overall$nogo_effect))
+```
+
+
+
+
+
+
+
+
+
+
+Incorrect way of doing no-go cost??
+
 Calculate accuracy by trial type (go vs. no-go):
 ```{r}
 flanker_df_acc_nogo = flanker_df_nogo %>% group_by(participant_number_fl, go_nogo) %>% 
@@ -335,40 +425,5 @@ flanker_df_acc_nogo = flanker_df_acc_nogo %>%
   mutate(nogo_effect = nogo_mean_errors - go_mean_acc)
 ```
 
-Calculate overall mean and SD of go/no-go effect on accuracy:
-```{r}
-flanker_df_acc_nogo$overall_mean_nogo_effect = 
-  mean(flanker_df_acc_nogo$nogo_effect)
-flanker_df_acc_nogo$overall_sd_nogo_effect = 
-  sd(flanker_df_acc_nogo$nogo_effect)
-```
-
-Calculate go/no-go Z score for each participant for accuracy:
-```{r}
-flanker_df_acc_nogo = flanker_df_acc_nogo %>% 
-  mutate(flanker_nogo_effect_z_score = ((nogo_effect - overall_mean_nogo_effect)/overall_sd_nogo_effect))
-```
-
-### Combining data sets for all Flanker costs
-
-Combine all three datasets
-```{r}
-full_flanker_df = full_join(flanker_df_comp_congruent, flanker_df_comp_switch)
-full_flanker_df = full_join(full_flanker_df, flanker_df_acc_nogo)
-full_flanker_df = left_join(full_flanker_df, participant_df)
-```
-
-Calculate Z score for age in months:
-```{r}
-full_flanker_df$mean_age_months = mean(full_flanker_df$age_months)
-full_flanker_df$sd_age_months = sd(full_flanker_df$age_months)
-full_flanker_df = full_flanker_df %>% 
-  mutate(age_months_z_score = (age_months - mean_age_months)/sd_age_months)
-```
-
-Write full Flanker cost data to a csv for analysis:
-```{r}
-write.csv(full_flanker_df, '../data/full_flanker_df.csv')
-```
 
 
