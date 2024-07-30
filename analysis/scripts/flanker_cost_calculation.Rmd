@@ -1,6 +1,6 @@
 ---
 title: "Flanker cost calculation"
-author: "Elizabeth Swanson"
+author: ""
 date: "2023-05-04"
 output: html_document
 ---
@@ -359,7 +359,7 @@ flanker_df_omit_nogo = flanker_df_omit_nogo %>%
 
 ### Combining data sets for all Flanker costs
 
-Combine all three datasets
+Combine all three datasets:
 ```{r}
 full_flanker_df = full_join(flanker_df_comp_congruent, flanker_df_comp_switch)
 full_flanker_df = full_join(full_flanker_df, flanker_df_omit_nogo)
@@ -378,52 +378,4 @@ Write full Flanker cost data to a csv for analysis:
 ```{r}
 write.csv(full_flanker_df, '../data/full_flanker_df.csv')
 ```
-
-
-```{r}
-flanker_df_acc_overall = flanker_df %>% filter(condition == 'congruent' | condition == 'incongruent') %>% group_by(participant_number_fl) %>% mutate(partic_mean_acc_go = mean(correct)) %>%
-  group_by(participant_number_fl) %>% filter(row_number() == 1)
-flanker_df_acc_overall = left_join(flanker_df_acc_overall, flanker_df_omit_nogo)
-cor(na.omit(flanker_df_acc_overall$partic_mean_acc_go), na.omit(flanker_df_acc_overall$nogo_effect))
-```
-
-
-
-
-
-
-
-
-
-
-Incorrect way of doing no-go cost??
-
-Calculate accuracy by trial type (go vs. no-go):
-```{r}
-flanker_df_acc_nogo = flanker_df_nogo %>% group_by(participant_number_fl, go_nogo) %>% 
-  summarise(partic_go_nogo_mean_acc = mean(correct))
-```
-
-Reshape data set to wide format so there is one row per participant, and add errors column:
-```{r}
-flanker_df_acc_nogo = flanker_df_acc_nogo %>% 
-  spread(key = 'go_nogo', value = 'partic_go_nogo_mean_acc') %>%
-  rename(go_mean_acc = go, nogo_mean_acc = nogo) %>%
-  mutate(go_mean_errors = 1-go_mean_acc,
-         nogo_mean_errors = 1-nogo_mean_acc)
-```
-
-T test to see if effect of go/no-go condition on accuracy is significant:
-```{r}
-t.test(flanker_df_acc_nogo$go_mean_acc, flanker_df_acc_nogo$nogo_mean_acc, paired=TRUE)
-```
-There is not a significant difference between the go and no-go conditions.
-
-Calculate the no-go cost on accuracy for each participant:
-```{r}
-flanker_df_acc_nogo = flanker_df_acc_nogo %>% 
-  mutate(nogo_effect = nogo_mean_errors - go_mean_acc)
-```
-
-
 
