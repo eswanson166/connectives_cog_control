@@ -72,7 +72,6 @@ raw_eye_data$lex_related_image_selected[raw_eye_data$participant_number == 22032
 raw_eye_data$lex_related_image_selected[raw_eye_data$participant_number == 10042305 & raw_eye_data$TRIAL_LABEL == 'Trial: 1'] = 0
 ```
 
-
 ## Participant data
 
 Load participant data:
@@ -103,7 +102,6 @@ flanker_df = plyr::ldply(flanker_files, read_csv)
 flanker_df = flanker_df %>% type.convert()
 flanker_df$participant_number_fl = flanker_df$subject
 ```
-
 
 ## Merging data
 
@@ -213,7 +211,10 @@ mean(1 - trackloss_clean_partic$TracklossForParticipant)
 sd(1- trackloss_clean_partic$TracklossForParticipant)
 ```
 
-# Novel word learning task
+
+
+# Eye gaze data
+
 
 ## Time course visualization
 
@@ -237,15 +238,84 @@ test_df = test_df %>%
   ))
 ```
 
+Create data frame with info for annotated versions of time course graphs (this comes from cluster analyses, which are in next section):
+```{r}
+time_clust_audio_child_adult = data.frame(
+  child_adult_group = c('(a) adults (n = 24)', '(a) adults (n = 24)', '(b) children ages 4 to 6 (n = 71)', '(b) children ages 4 to 6 (n = 71)'),
+  p_val = c('p < 0.01***', 'p < 0.01***', 'p < 0.01***', 'p < 0.01***'),
+  time_clust_start = c(900, 900, 460, 460),
+  time_clust_end = c(2100, 2100, 4120, 4120),
+  condition = c('so', 'so', 'but', 'but')
+)
+
+time_clust_audio_age_group = data.frame(
+  age_group_label = c('(a) 4-year-olds (n=24)', '(b) 5-year-olds (n=23)', '(c) 6-year-olds (n=24)', '(d) adults (n=24)', '(a) 4-year-olds (n=24)', '(b) 5-year-olds (n=23)', '(c) 6-year-olds (n=24)', '(d) adults (n=24)'),
+  p_val = c('p < 0.05', 'p < 0.01', 'p = 0.11', 'p < 0.01', 'p < 0.05', 'p < 0.01', 'p = 0.11', 'p < 0.01'),
+  time_clust_start = c(1240, 740, 1060, 460, 1240, 740, 1060, 460),
+  condition = c('so', 'so', 'so', 'so', 'but', 'but', 'but', 'but')
+)
+```
+
+### Children vs. adults
+
+Make time sequence data with child/adult group as predictor:
+```{r}
+test_df = test_df %>% 
+  mutate(child_adult_group_label = case_when(
+    child_adult_group == "adults" ~ "(a) adults (n = 24)",
+    child_adult_group == "children" ~ "(b) children ages 4 to 6 (n = 71)"
+  ))
+
+timecourse_child_adult_group <- make_time_sequence_data(test_df, time_bin_size = 20, 
+                                         predictor_columns = c("condition",
+                                                               "child_adult_group_label"),
+                                         aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
+                                         summarize_by = "participant_number")
+
+```
+
+Make time course graph for children vs. adults:
+```{r}
+plot(timecourse_child_adult_group, predictor_column = "condition") + theme_bw() +  
+  theme(text = element_text(size = 14)) +  
+  geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
+  geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
+  ylim(0,1) +
+  xlim(-1000, 4000) +
+  facet_wrap(~child_adult_group_label, ncol=1) +
+  geom_rect(data = timecourse_child_adult_group[1,], aes(xmin = 900, xmax = 2100, ymin = -Inf, ymax = Inf), alpha = 0.12, color = NA, fill = 'darkorange') +
+    geom_rect(data = timecourse_child_adult_group[20634,], aes(xmin = 460, xmax = 4000, ymin = -Inf, ymax = Inf), alpha = 0.12, color = NA, fill = 'darkorange') +
+  annotate('rect', xmin = -999, xmax = -10, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
+           color = 'darkgray', fill = 'darkgray') +
+  annotate('text', x = -500, y = 0.15, label = 'Emilie had soup for\nlunch,', size = 2.8) +
+  annotate('rect', xmin = 10, xmax = 222, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
+           color = 'darkgray', fill = 'darkgray') +
+  annotate('text', x = 110, y = 0.15, label = 'so/\nbut', size = 2.8) +
+  annotate('rect', xmin = 230, xmax = 1298, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
+           color = 'darkgray', fill = 'darkgray') +
+  annotate('text', x = 750, y = 0.15, label = 'she used a mora', size = 2.8) +
+  annotate('rect', xmin = 2458, xmax = 3645, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
+           color = 'darkgray', fill = 'darkgray') +
+  annotate('text', x = 3060, y = 0.15, label = 'Can you show me a mora?', size = 2.8) +
+  geom_text(data = time_clust_audio_child_adult, aes(x = 1400, y = .9, label = p_val), color = 'black', size = 4) +
+  scale_fill_manual(name = 'Condition', values = palette) +
+  scale_color_manual(name = 'Condition', values = palette) +
+  xlab("Time since connective onset (ms)") +
+  ylab("Proportion of looks to semantically associated image") 
+  #ggtitle("Proportion of looks to semantically associated image by condition")
+
+ggsave('timecourse_child_adult_annotated.pdf', path = '../graphs', height = 6, width = 8)
+```
+
 ### Age group
 
 New label for age group, to make graphs look nicer:
 ```{r}
 test_df = test_df %>% mutate(age_group_label = case_when(
-  age_group == '4-year-olds' ~ 'a) 4-year-olds (n=24)',
-  age_group == '5-year-olds' ~ 'b) 5-year-olds (n=23)',
-  age_group == '6-year-olds' ~ 'c) 6-year-olds (n=24)',
-  age_group == 'adults' ~ 'd) adults (n=24)',
+  age_group == '4-year-olds' ~ '(a) 4-year-olds (n=24)',
+  age_group == '5-year-olds' ~ '(b) 5-year-olds (n=23)',
+  age_group == '6-year-olds' ~ '(c) 6-year-olds (n=24)',
+  age_group == 'adults' ~ '(d) adults (n=24)',
 ))
 ```
 
@@ -265,47 +335,31 @@ plot(timecourse_age_group, predictor_column = "condition") + theme_bw() +
   geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
   ylim(0,1) +
   xlim(-1000, 4000) +
-  facet_wrap(~age_group_label, ncol=2) +
+  facet_wrap(~age_group_label, ncol=1) +
+  geom_rect(data = timecourse_age_group[1,], aes(xmin = 1240, xmax = 2020, ymin = -Inf, ymax = Inf), alpha = 0.12, color = NA, fill = 'darkorange') +
+  geom_rect(data = timecourse_age_group[26682,], aes(xmin = 740, xmax = 2060, ymin = -Inf, ymax = Inf), alpha = 0.12, color = NA, fill = 'darkorange') +
+  geom_rect(data = timecourse_age_group[1176,], aes(xmin = 1060, xmax = 1580, ymin = -Inf, ymax = Inf), alpha = 0.13, color = NA, fill = 'gold2') +
+  geom_rect(data = timecourse_age_group[12437,], aes(xmin = 460, xmax = 4000, ymin = -Inf, ymax = Inf), alpha = 0.12, color = NA, fill = 'darkorange') +
+  annotate('rect', xmin = -1000, xmax = -10, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
+           color = 'darkgray', fill = 'darkgray') +
+  annotate('text', x = -500, y = 0.15, label = 'Emilie had soup for lunch,', size = 2) +
+  annotate('rect', xmin = 10, xmax = 222, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
+           color = 'darkgray', fill = 'darkgray') +
+  annotate('text', x = 110, y = 0.15, label = 'so/\nbut', size = 2) +
+  annotate('rect', xmin = 230, xmax = 1298, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
+           color = 'darkgray', fill = 'darkgray') +
+  annotate('text', x = 750, y = 0.15, label = 'she used a mora', size = 2) +
+  annotate('rect', xmin = 2458, xmax = 3645, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
+           color = 'darkgray', fill = 'darkgray') +
+  annotate('text', x = 3060, y = 0.15, label = 'Can you show me a mora?', size = 2) +
+  geom_text(data = time_clust_audio_age_group, aes(x = time_clust_start + 270, y = .9, label = p_val), color = 'black', size = 3) +
+  scale_fill_manual(name = 'Condition', values = palette) +
+  scale_color_manual(name = 'Condition', values = palette) +
   xlab("Time since connective onset (ms)") +
-  ylab("Proportion of looks to semantically associated image") +
-  ggtitle("Proportion of looks to semantically associated image by condition")
+  ylab("Proportion of looks to semantically associated image")
 
-ggsave('timecourse_age_group_2by2.pdf', path = '../graphs', height = 5, width = 9)
-```
-
-### Children vs. adults
-
-Make time sequence data with child/adult group as predictor:
-```{r}
-test_df2 = test_df %>% 
-  mutate(child_adult_group = case_when(
-    child_adult_group == "adults" ~ "adults (n = 24)",
-    child_adult_group == "children" ~ "children ages 4 to 6 (n = 71)"
-  ))
-
-timecourse_child_adult_group <- make_time_sequence_data(test_df2, time_bin_size = 20, 
-                                         predictor_columns = c("condition",
-                                                               "child_adult_group"),
-                                         aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
-                                         summarize_by = "participant_number")
-
-```
-
-Make time course graph for children vs. adults:
-```{r}
-plot(timecourse_child_adult_group, predictor_column = "condition") + theme_bw() +  
-  theme(text = element_text(size = 12)) +  
-  geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
-  geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
-  ylim(0,1) +
-  xlim(-1000, 4000) +
-  facet_wrap(~child_adult_group, nrow = 2) +
-  annotate("text", x=-150, y=.9, label="connective \nonset", size = 2.5) +
-  xlab("Time since connective onset (ms)") +
-  ylab("Proportion of looks to semantically associated image") +
-  ggtitle("Proportion of looks to semantically associated image by condition")
-
-ggsave('timecourse_child_adult.pdf', path = '../graphs', height = 5, width = 7)
+ggsave('timecourse_age_group_annotated.pdf', path = '../graphs', height = 7, width = 7)
+ggsave('timecourse_age_group_annotated.jpg', path = '../graphs', height = 7, width = 7)
 ```
 
 ### Correct vs. incorrect points
@@ -371,95 +425,6 @@ plot(timecourse_item_child, predictor_column = "condition") +
 ggsave('timecourse_item_child.pdf', path = '../graphs', height = 7, width = 9)
 ```
 
-### Annotated time course graphs
-
-Create data frame with info for annotated versions of time course graphs (this comes from cluster analyses, which are in next section):
-```{r}
-time_clust_audio_age_group = data.frame(
-  age_group_label = c('a) 4-year-olds (n=24)', 'b) 5-year-olds (n=23)', 'c) 6-year-olds (n=24)', 'd) adults (n=24)', 'a) 4-year-olds (n=24)', 'b) 5-year-olds (n=23)', 'c) 6-year-olds (n=24)', 'd) adults (n=24)'),
-  p_val = c('p < 0.05', 'p < 0.01', 'p = 0.11', 'p < 0.01', 'p < 0.05', 'p < 0.01', 'p = 0.11', 'p < 0.01'),
-  time_clust_start = c(1240, 740, 1060, 460, 1240, 740, 1060, 460),
-  condition = c('so', 'so', 'so', 'so', 'but', 'but', 'but', 'but')
-)
-
-time_clust_audio_child_adult = data.frame(
-  child_adult_group = c('children ages 4 to 6 (n = 71)', 'children ages 4 to 6 (n = 71)', 'adults (n = 24)', 'adults (n = 24)'),
-  p_val = c('p < 0.01***', 'p < 0.01***', 'p < 0.01***', 'p < 0.01***'),
-  time_clust_start = c(900, 900, 460, 460),
-  time_clust_end = c(2100, 2100, 4120, 4120),
-  condition = c('so', 'so', 'but', 'but')
-)
-```
-
-Annotated version of time course graph by age group:
-```{r}
-plot(timecourse_age_group, predictor_column = "condition") + theme_bw() +  
-  theme(text = element_text(size = 12)) +  
-  geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
-  geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
-  ylim(0,1) +
-  xlim(-1000, 4000) +
-  facet_wrap(~age_group_label, ncol=1) +
-  geom_rect(data = timecourse_age_group[1,], aes(xmin = 1240, xmax = 2020, ymin = -Inf, ymax = Inf), alpha = 0.12, color = NA, fill = 'darkorange') +
-  geom_rect(data = timecourse_age_group[26682,], aes(xmin = 740, xmax = 2060, ymin = -Inf, ymax = Inf), alpha = 0.12, color = NA, fill = 'darkorange') +
-  geom_rect(data = timecourse_age_group[1176,], aes(xmin = 1060, xmax = 1580, ymin = -Inf, ymax = Inf), alpha = 0.13, color = NA, fill = 'gold2') +
-  geom_rect(data = timecourse_age_group[12437,], aes(xmin = 460, xmax = 4000, ymin = -Inf, ymax = Inf), alpha = 0.12, color = NA, fill = 'darkorange') +
-  annotate('rect', xmin = -1000, xmax = -10, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
-           color = 'darkgray', fill = 'darkgray') +
-  annotate('text', x = -500, y = 0.15, label = 'Emilie had soup for lunch,', size = 2) +
-  annotate('rect', xmin = 10, xmax = 222, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
-           color = 'darkgray', fill = 'darkgray') +
-  annotate('text', x = 110, y = 0.15, label = 'so/\nbut', size = 2) +
-  annotate('rect', xmin = 230, xmax = 1298, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
-           color = 'darkgray', fill = 'darkgray') +
-  annotate('text', x = 750, y = 0.15, label = 'she used a mora', size = 2) +
-  annotate('rect', xmin = 2458, xmax = 3645, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
-           color = 'darkgray', fill = 'darkgray') +
-  annotate('text', x = 3060, y = 0.15, label = 'Can you show me a mora?', size = 2) +
-  geom_text(data = time_clust_audio_age_group, aes(x = time_clust_start + 270, y = .9, label = p_val), color = 'black', size = 3) +
-  scale_fill_manual(name = 'Condition', values = palette) +
-  scale_color_manual(name = 'Condition', values = palette) +
-  xlab("Time since connective onset (ms)") +
-  ylab("Proportion of looks to semantically associated image") +
-  ggtitle("")
-
-ggsave('timecourse_age_group_annotated.pdf', path = '../graphs', height = 7, width = 7)
-ggsave('timecourse_age_group_annotated.jpg', path = '../graphs', height = 7, width = 7)
-```
-
-Make annotated version of time course graph for children vs. adults:
-```{r}
-plot(timecourse_child_adult_group, predictor_column = "condition") + theme_bw() +  
-  theme(text = element_text(size = 12)) +  
-  geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
-  geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
-  ylim(0,1) +
-  xlim(-1000, 4000) +
-  facet_wrap(~child_adult_group, ncol=1) +
-  geom_rect(data = timecourse_child_adult_group[1,], aes(xmin = 900, xmax = 2100, ymin = -Inf, ymax = Inf), alpha = 0.12, color = NA, fill = 'darkorange') +
-    geom_rect(data = timecourse_child_adult_group[20634,], aes(xmin = 460, xmax = 4000, ymin = -Inf, ymax = Inf), alpha = 0.12, color = NA, fill = 'darkorange') +
-  annotate('rect', xmin = -999, xmax = -10, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
-           color = 'darkgray', fill = 'darkgray') +
-  annotate('text', x = -500, y = 0.15, label = 'Emilie had soup for lunch,', size = 2.5) +
-  annotate('rect', xmin = 10, xmax = 222, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
-           color = 'darkgray', fill = 'darkgray') +
-  annotate('text', x = 110, y = 0.15, label = 'so/\nbut', size = 2.5) +
-  annotate('rect', xmin = 230, xmax = 1298, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
-           color = 'darkgray', fill = 'darkgray') +
-  annotate('text', x = 750, y = 0.15, label = 'she used a mora', size = 2.5) +
-  annotate('rect', xmin = 2458, xmax = 3645, ymin = 0.05, ymax = 0.25, alpha = 0.3, 
-           color = 'darkgray', fill = 'darkgray') +
-  annotate('text', x = 3060, y = 0.15, label = 'Can you show me a mora?', size = 2.5) +
-  geom_text(data = time_clust_audio_child_adult, aes(x = 1400, y = .9, label = p_val), color = 'black', size = 3) +
-  scale_fill_discrete(name = 'Condition') +
-  scale_color_discrete(name = 'Condition') +
-  xlab("Time since connective onset (ms)") +
-  ylab("Proportion of looks to semantically associated image") +
-  ggtitle("Proportion of looks to semantically associated image by condition")
-
-ggsave('timecourse_child_adult_annotated.pdf', path = '../graphs', height = 6, width = 8)
-```
-
 
 ## Cluster analysis
 
@@ -518,11 +483,6 @@ ggsave('timecluster_analysis_child.pdf', path = '../graphs', height = 4, width =
 ```
 
 For children, there is a sig. cluster between 900 and 2100 ms (p < 0.01).
-
-Note: if you do this for individual child age groups (code below), there are clusters at:
-1240 to 2020 for 4-year-olds (p = 0.049)
-740 to 2060 for 5-year-olds (p = 0.000)
-1060 to 1580 for 6-year-olds (p = 0.11)
 
 Make time cluster data for adults:
 ```{r}
@@ -603,7 +563,17 @@ timeclust_analysis_child6 = analyze_time_clusters(timeclust_child6, within_subj 
 summary(timeclust_analysis_child4)
 ```
 
-## Pointing data
+For individual child age groups, there are clusters at:
+1240 to 2020 for 4-year-olds (p = 0.049)
+740 to 2060 for 5-year-olds (p = 0.000)
+1060 to 1580 for 6-year-olds (p = 0.11)
+
+
+
+# Pointing data
+
+
+## Data prep
 
 Create dataframe with one row per trial per participant and calculate participant's proportion of trials per condition with semantically associated image selected:
 ```{r}
@@ -621,7 +591,7 @@ test_df_partic_cond = test_df_trial %>% group_by(participant_number, condition) 
   filter(row_number() == 1)
 ```
 
-### Age group
+## Age group
 
 Summarize number of trials on each condition for which participants selected the semantically associated image:
 ```{r}
@@ -656,11 +626,11 @@ ggplot(pointing_summ) +
 ggsave('pointing_age_group_bar.pdf', path = '../graphs', height = 4, width = 6)
 ```
 
-Line graph of proportion of trials on each condition for which participants selected the lexically related image, by age group:
+Line graph of proportion of trials on each condition for which participants selected the semantically associated image, by age group:
 ```{r}
 ggplot(pointing_summ) +
   theme_bw() +
-  theme(text = element_text(size = 10)) +  
+  theme(text = element_text(size = 12)) +  
   aes(x = age_group, y = mean_prop_lex_related_image_selected, group = condition, color = condition) +
   geom_point(data = test_df_partic_cond, aes(x = age_group, y = partic_prop_lex_related_image_selected, group = condition), 
               position = position_jitterdodge(dodge.width=.3, jitter.width = .2), shape = 21, size = 1, stroke = 0.4, alpha = 0.8) +
@@ -678,7 +648,7 @@ ggsave('pointing_age_group_line.pdf', path = '../graphs', height = 4, width = 6)
 ggsave('pointing_age_group_line.jpg', path = '../graphs', height = 4, width = 6)
 ```
 
-### Children vs. adults
+## Children vs. adults
 
 ```{r}
 test_df_partic_cond = test_df_partic_cond %>% 
@@ -686,7 +656,6 @@ test_df_partic_cond = test_df_partic_cond %>%
     child_adult_group == 'adults' ~ 'adults (n = 24)',
     child_adult_group == 'children' ~ 'children ages 4 to 6 (n = 71)'))
 ```
-
 
 Summarize number of trials on each condition for which participants selected the semantically associated image (for children vs. adults):
 ```{r}
@@ -721,7 +690,7 @@ ggplot(pointing_summ_child_adult) +
 ggsave('pointing_child_adult_group_bar.pdf', path = '../graphs', height = 4, width = 6)
 ```
 
-### Item
+## Item differences
 
 Summarize by-item proportion of selecting the semantically associated image (for children vs. adults):
 ```{r}
@@ -755,32 +724,37 @@ ggplot(item_summ_child_adult) +
 ggsave('pointing_item_child_adult.pdf', path = '../graphs', height = 4, width = 8)
 ```
 
+
+
 # Novel word learning task analysis
+
 
 ## Pointing data
 
 Test whether condition predicts pointing to semantically associated image for children:
 ```{r}
-pointing_lm_child = lmer(lex_related_image_selected ~ condition +
-                     (1|participant_number) + (1|novelword), 
-                   data = test_df_trial, subset = child_adult_group == 'children')
+pointing_lm_child = glmer(lex_related_image_selected ~ condition +
+                     (1 + condition|participant_number) + (1|novelword), 
+                   data = test_df_trial, subset = child_adult_group == 'children', family = 'binomial')
 summary(pointing_lm_child)
 ```
 
 Test whether condition predicts pointing to semantically associated image for adults:
 ```{r}
-pointing_lm_adult = lmer(lex_related_image_selected ~ condition +
+pointing_lm_adult = glmer(lex_related_image_selected ~ condition +
                      (1|participant_number) + (1|novelword), 
-                   data = test_df_trial, subset = age_group == 'adults')
+                   data = test_df_trial, subset = age_group == 'adults', family = 'binomial')
 summary(pointing_lm_adult)
+# model with random slope for condition by participant does not converge so just use random intercept for participant
 ```
 
 Test whether age predicts points to semantically associated image (post-hoc):
 ```{r}
-pointing_lm_age = lmer(lex_related_image_selected ~ condition*age_months +
-                     (1|participant_number) + (1|novelword), 
-                   data = test_df_trial, subset = (child_adult_group == 'children'))
+pointing_lm_age = glmer(lex_related_image_selected ~ condition*age_months + (1|participant_number) +
+                     (1|novelword), 
+                   data = test_df_trial, subset = (child_adult_group == 'children'), family = 'binomial')
 summary(pointing_lm_age)
+# model with random slope for condition by participant does not converge so just use random intercept for participant
 ```
 
 ## Proportion of looks
@@ -813,7 +787,6 @@ window_test_df_partic_trial = make_time_window_data(window_test_df,
                                                                 "trialnumber"), 
                                               summarize_by = "participant_number")
 ```
-
 
 ### Age group
 
@@ -867,20 +840,51 @@ t.test(prop_looks_partic_child$arcsin_prop_looks_so, prop_looks_partic_child$arc
 t.test(prop_looks_partic_adult$arcsin_prop_looks_so, prop_looks_partic_adult$arcsin_prop_looks_but, paired = TRUE)
 ```
 
-Run a model to test for an effect of condition, for children and adults:
-```{r}
-prop_looks_lm_children = lmer(ArcSin ~ condition + (1|participant_number) +
-                        (1|novelword), data = window_test_df_item,
-                      subset = child_adult_group == 'children')
-summary(prop_looks_lm_children)
+### Interaction with age
 
-prop_looks_lm_adults = lmer(ArcSin ~ condition + (1|participant_number) +
-                        (1|novelword), data = window_test_df_item,
-                      subset = child_adult_group == 'adults')
-summary(prop_looks_lm_adults)
+Analysis to see if there's an interaction of condition and age (post-hoc):
+```{r}
+window_test_df_item_agegroup = make_time_window_data(window_test_df, 
+                                              aois = 'AVERAGE_IA_1_SAMPLE_COUNT_.',
+                                              predictor_columns = c("condition", "novelword",
+                                                                    "age_group"), 
+                                              summarize_by = "participant_number")
 ```
 
-Both children and adults looked significantly more at the semantically associated image in the so condition than in the but condition.
+Relevel age group:
+```{r}
+window_test_df_item_agegroup = window_test_df_item_agegroup %>% 
+  filter(age_group != 'adults') %>%
+  mutate(age_group_relevel = factor(age_group, levels = c('4-year-olds', '5-year-olds', '6-year-olds')))
+
+window_test_df_item_agegroup$novelword = factor(window_test_df_item_agegroup$novelword)
+window_test_df_item_agegroup$participant_number = factor(window_test_df_item_agegroup$participant_number)
+```
+
+Switch to sum-coding for categorical variables:
+```{r}
+window_test_df_item_agegroup$condition = factor(window_test_df_item_agegroup$condition, levels = c('so', 'but'))
+contrasts(window_test_df_item_agegroup$condition) = contr.sum(2)
+contrasts(window_test_df_item_agegroup$age_group_relevel) = contr.sum(3)
+
+contrasts(window_test_df_item_agegroup$condition)
+contrasts(window_test_df_item_agegroup$age_group_relevel)
+```
+
+Model with age group:
+```{r}
+looks_cond_age = lmer(ArcSin ~ condition*age_group_relevel + (1|novelword) +
+                        (1+condition|participant_number), data = window_test_df_item_agegroup)
+summary(looks_cond_age)
+```
+
+Check normality in model - without doing arcsine transform, trying to predict just raw proportions, residuals are very non-normally distributed:
+```{r}
+qqnorm(resid(looks_cond_age))
+qqline(resid(looks_cond_age))
+
+shapiro.test(resid(looks_cond_age))
+```
 
 ### Item
 
@@ -925,23 +929,23 @@ ggplot(prop_looks_item_summ) +
 ggsave('prop_looks_item_child_adult.pdf', path = '../graphs', height = 4, width = 8)
 ```
 
-### Interaction with age
+### Model to test for effect of condition
 
-Analysis to see if there's an interaction of condition and age (post-hoc:
+Run a model to test for an effect of condition, for children and adults:
 ```{r}
-window_test_df_item_agegroup = make_time_window_data(window_test_df, 
-                                              aois = 'AVERAGE_IA_1_SAMPLE_COUNT_.',
-                                              predictor_columns = c("condition", "novelword",
-                                                                    "age_group"), 
-                                              summarize_by = "participant_number")
+prop_looks_lm_children = lmer(ArcSin ~ condition + (1|participant_number) +
+                        (1|novelword), data = window_test_df_item,
+                      subset = child_adult_group == 'children')
+summary(prop_looks_lm_children)
+# model with random slopes for condition by participant doesn't converge; retain just random intercept
 
-window_test_df_item_agegroup = window_test_df_item_agegroup %>% mutate(age_group_relevel = factor(age_group, levels = c('5-year-olds', '4-year-olds', '6-year-olds', 'adults')))
-
-looks_cond_age = lmer(ArcSin ~ condition*age_group_relevel + (1|novelword) +
-                        (1|participant_number), data = window_test_df_item_agegroup,
-                      subset = age_group != 'adults')
-summary(looks_cond_age)
+prop_looks_lm_adults = lmer(ArcSin ~ condition + (1 + condition|participant_number) +
+                        (1|novelword), data = window_test_df_item,
+                      subset = child_adult_group == 'adults')
+summary(prop_looks_lm_adults)
 ```
+
+Both children and adults looked significantly more at the semantically associated image in the so condition than in the but condition.
 
 ### Looks to correct image
 
@@ -976,7 +980,12 @@ prop_looks_correct_adults = window_test_df_partic_cond_correct %>%
   rename(prop_correct_looks_but = but, prop_correct_looks_so = so)
 ```
 
-# Relationship of Flanker performance and pointing performance
+
+
+# Relationship of Flanker performance and performance on novel word learning task
+
+
+## Data prep
 
 Create a column for accuracy on pointing trials:
 ```{r}
@@ -1032,233 +1041,7 @@ pointing_df_partic_cond = pointing_df_partic_cond %>%
   mutate(prop_correct_points_so_z_score = ((prop_correct_points_so - mean_prop_correct_points_so)/sd_prop_correct_points_so))
 ```
 
-## Pointing and Flanker costs
-
-Run a regression to test whether Flanker performance predicts performance on but trials (pointing):
-```{r}
-fl_pointing_lm = lm(prop_correct_points_but_z_score ~ composite_congruency_effect + composite_switch_effect + flanker_nogo_effect_z_score + age_months_z_score + prop_correct_points_so_z_score, 
-                    data = pointing_df_partic_cond)
-summary(fl_pointing_lm)
-
-vif(fl_pointing_lm)
-```
-
-Run it without combining RT and acc z-scores:
-```{r}
-fl_pointing_separate_lm = lm(prop_correct_points_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + prop_correct_points_so_z_score, 
-                             data = pointing_df_partic_cond)
-summary(fl_pointing_separate_lm)
-
-vif(fl_pointing_separate_lm)
-```
-
-### Plot relationship between Flanker Switch RT cost and correct points on but trials
-
-To plot relationship between Flanker switch cost RT and points to correct image on but trials, create versions of the regression predicting each outcome and get the residuals:
-```{r}
-fl_pointing_switch_rt = lm(flanker_switch_rt_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + prop_correct_points_so_z_score, 
-                             data = pointing_df_partic_cond)
-switch_resid = residuals.lm(fl_pointing_switch_rt)
-
-fl_pointing_correct_points_but = lm(prop_correct_points_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + prop_correct_points_so_z_score, 
-                             data = pointing_df_partic_cond)
-correct_points_but_resid = residuals.lm(fl_pointing_correct_points_but)
-
-switch_but_resid = data.frame(switch_resid, correct_points_but_resid)
-```
-
-Plot these residuals to get the relationship between switch RT cost and correct points on but trials:
-```{r}
-ggplot(data = switch_but_resid, aes(x = switch_resid, y = correct_points_but_resid)) +
-  theme(text = element_text(size = 14)) +  
-  geom_point() +
-  geom_smooth(method="lm") +
-  xlab('Flanker Switch reaction time cost') +
-  ylab('Prop. points to correct image on but trials') +
-  ggtitle("'But' accuracy and Flanker Switch reaction time cost") 
-
-ggsave('resid_switch_correct_but_points.pdf', path = '../graphs', height = 4, width =6)
-```
-
-## Relationship of Flanker performance and looking to correct image
-
-Merge Flanker data and proportion of looks data:
-```{r}
-prop_looks_correct_fl = right_join(prop_looks_correct_child, full_flanker_df, by = c('participant_number'))
-```
-
-Calculate z-score for proportion of looks to correct image on so trials:
-```{r}
-prop_looks_correct_fl$mean_prop_correct_looks_so = mean(prop_looks_correct_fl$prop_correct_looks_so)
-prop_looks_correct_fl$sd_prop_correct_looks_so = sd(prop_looks_correct_fl$prop_correct_looks_so)
-
-prop_looks_correct_fl = prop_looks_correct_fl %>% 
-  mutate(prop_correct_looks_so_z_score = ((prop_correct_looks_so - mean_prop_correct_looks_so)/sd_prop_correct_looks_so))
-```
-
-Calculate z-score for proportion of looks to correct image on but trials:
-```{r}
-prop_looks_correct_fl$mean_prop_correct_looks_but = mean(prop_looks_correct_fl$prop_correct_looks_but)
-prop_looks_correct_fl$sd_prop_correct_looks_but = sd(prop_looks_correct_fl$prop_correct_looks_but)
-
-prop_looks_correct_fl = prop_looks_correct_fl %>% 
-  mutate(prop_correct_looks_but_z_score = ((prop_correct_looks_but - mean_prop_correct_looks_but)/sd_prop_correct_looks_but))
-```
-
-### Prop looks and Flanker costs
-
-Run a regression to test whether Flanker performance predicts looking performance on but trials:
-```{r}
-fl_looking_lm = lm(prop_correct_looks_but_z_score ~ composite_congruency_effect + composite_switch_effect + flanker_nogo_effect_z_score + age_months_z_score + prop_correct_looks_so_z_score, data = prop_looks_correct_fl)
-summary(fl_looking_lm)
-
-vif(fl_looking_lm)
-```
-
-Run it without combining RT and acc z-scores:
-```{r}
-fl_looking_separate_lm = lm(prop_correct_looks_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + prop_correct_looks_so_z_score, data = prop_looks_correct_fl)
-summary(fl_looking_separate_lm)
-vif(fl_looking_separate_lm)
-```
-
-### Plot relationship between Flanker no go cost and correct looks on but trials
-
-To plot relationship between Flanker no go cost and looks to correct image on but trials, create versions of the regression predicting each outcome and get the residuals:
-```{r}
-fl_looking_nogo = lm(flanker_nogo_effect_z_score ~ composite_congruency_effect + composite_switch_effect + age_months_z_score + prop_correct_looks_so_z_score, 
-                             data = prop_looks_correct_fl)
-nogo_resid = residuals.lm(fl_looking_nogo)
-
-fl_looking_correct_looks_but = lm(prop_correct_looks_but_z_score ~ composite_congruency_effect + composite_switch_effect + age_months_z_score + prop_correct_looks_so_z_score, 
-                             data = prop_looks_correct_fl)
-correct_looks_but_resid = residuals.lm(fl_looking_correct_looks_but)
-
-nogo_but_resid = data.frame(nogo_resid, correct_looks_but_resid)
-
-fl_looking_nogo = lm(flanker_nogo_effect_z_score ~ composite_congruency_effect + composite_switch_effect + age_months_z_score + prop_correct_looks_so_z_score, 
-                             data = prop_looks_correct_fl)
-nogo_resid = residuals.lm(fl_looking_nogo)
-
-fl_looking_correct_looks_but = lm(prop_correct_looks_but_z_score ~ composite_congruency_effect + composite_switch_effect + age_months_z_score + prop_correct_looks_so_z_score, 
-                             data = prop_looks_correct_fl)
-correct_looks_but_resid = residuals.lm(fl_looking_correct_looks_but)
-
-nogo_but_resid = data.frame(nogo_resid, correct_looks_but_resid)
-```
-
-Plot these residuals to get the relationship between switch RT cost and correct points on but trials:
-```{r}
-ggplot(data = nogo_but_resid, aes(x = nogo_resid, y = correct_looks_but_resid)) +
-  theme(text = element_text(size = 14)) +  
-  geom_point() +
-  geom_smooth(method="lm") +
-  xlab('No-Go Cost') +
-  ylab('Prop. looks to correct image on but trials') +
-  ggtitle("'But' accuracy and No-Go Cost")
-
-ggsave('resid_nogo_correct_but_non_outlier_looks.pdf', path = '../graphs', height = 4, width =6)
-```
-
-Plot raw data correlation to get the relationship between no go cost and correct looks on but trials:
-```{r}
-ggplot(data = prop_looks_correct_fl, aes(x = flanker_nogo_effect_z_score, y = prop_correct_looks_but_z_score)) +
-  theme(text = element_text(size = 14)) +  
-  geom_point() +
-  geom_smooth(method="lm") +
-  xlab('No-Go Cost') +
-  ylab('Prop. looks to correct image on but trials') +
-  ggtitle("'But' accuracy and No-Go Cost")
-
-ggsave('corr_nogo_correct_but_non_outlier_looks.pdf', path = '../graphs', height = 4, width =6)
-```
-
-
-## Low vs. high Flanker cost children
-
-As an exploratory analysis, we will separate children into those with low and high Flanker costs and visualize their eye gaze patterns to see if there are clear differences.
-
-### No go cost
-
-Separate by low/high no-go cost:
-```{r}
-full_flanker_df = full_flanker_df %>% mutate(low_high_nogo_cost = case_when(
-  flanker_nogo_effect_z_score < 0 ~ 'Low no-go cost',
-  flanker_nogo_effect_z_score > 0 ~ 'High no-go cost'
-))
-```
-
-Make time sequence data with low/high no-go group:
-```{r}
-test_df_child = test_df %>% filter(child_adult_group == "children")
-test_df_child = left_join(test_df_child, full_flanker_df, by = 'participant_number_fl')
-
-timecourse_correct_point_nogo <- make_time_sequence_data(test_df_child, time_bin_size = 20, 
-                                         predictor_columns = c("condition",
-                                                               "correct_point",
-                                                               "low_high_nogo_cost"),
-                                         aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
-                                         summarize_by = "participant_number.x") %>%
-  filter(!is.na(low_high_nogo_cost))
-
-```
-
-Make time course graph for high vs. low no-go cost and correct vs. incorrect points:
-```{r}
-plot(timecourse_correct_point_nogo, predictor_column = "condition") + theme_bw() +  
-  theme(text = element_text(size = 12)) +  
-  geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
-  geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
-  ylim(0,1) +
-  xlim(-1000, 4000) +
-  facet_grid(rows = vars(correct_point), cols = vars(low_high_nogo_cost)) +
-  xlab("Time since connective onset (ms)") +
-  ylab("Proportion of looks to semantically associated image") +
-  ggtitle("Proportion of looks to semantically associated image: High vs. low no-go cost")
-
-ggsave('timecourse_nogo_high_low.pdf', path = '../graphs', height = 5, width = 9)
-```
-
-## Low/high switch RT difference
-
-Separate by low/high switch RT:
-```{r}
-test_df_child = test_df_child %>% mutate(low_high_switch_rt_diff = case_when(
-  flanker_switch_rt_z_score < 0 ~ 'Low switch RT cost',
-  flanker_switch_rt_z_score > 0 ~ 'High switch RT cost'
-))
-```
-
-Make time sequence data with low/high switch RT difference group:
-```{r}
-timecourse_correct_point_switch_rt <- make_time_sequence_data(test_df_child, time_bin_size = 20, 
-                                         predictor_columns = c("condition",
-                                                               "correct_point",
-                                                               "low_high_switch_rt_diff"),
-                                         aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
-                                         summarize_by = "participant_number.x") %>%
-  filter(!is.na(low_high_switch_rt_diff))
-
-```
-
-Make time course graph for high vs. low switch RT cost and correct vs. incorrect points:
-```{r}
-plot(timecourse_correct_point_switch_rt, predictor_column = "condition") + theme_bw() +  
-  theme(text = element_text(size = 12)) +  
-  geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
-  geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
-  ylim(0,1) +
-  xlim(-1000, 4000) +
-  facet_grid(rows = vars(correct_point), cols = vars(low_high_switch_rt_diff)) +
-  xlab("Time since connective onset (ms)") +
-  ylab("Proportion of looks to semantically associated image") +
-  ggtitle("Proportion of looks to semantically associated image: High vs. low switch RT cost")
-
-ggsave('timecourse_switch_rt_high_low.pdf', path = '../graphs', height = 5, width = 9)
-```
-
-
-# SES analysis
+## Adding in SES
 
 Import anonymized SES dataframe:
 ```{r}
@@ -1266,109 +1049,42 @@ ses_df = read.csv('../data/ses_df_nonidentifiable.csv')
 ses_df = ses_df %>% select(-X)
 ```
 
-## SES and pointing responses
-
-
 Merge SES data with pointing dataframe:
 ```{r}
 pointing_df_partic_cond_ses = left_join(pointing_df_partic_cond, ses_df)
 pointing_df_partic_cond_ses = pointing_df_partic_cond_ses %>% 
-  filter(!is.na(ses_index))
+  filter(!is.na(educ_level_parent1))
 ```
 
 SES summary statistics:
 ```{r}
-mean(na.omit(pointing_df_partic_cond_ses$educ_level_parent1))
-median(na.omit(pointing_df_partic_cond_ses$educ_level_parent1))
-min(na.omit(pointing_df_partic_cond_ses$educ_level_parent1))
-max(na.omit(pointing_df_partic_cond_ses$educ_level_parent1))
+mean(pointing_df_partic_cond_ses$educ_level_parent1)
+median(pointing_df_partic_cond_ses$educ_level_parent1)
+min(pointing_df_partic_cond_ses$educ_level_parent1)
+max(pointing_df_partic_cond_ses$educ_level_parent1)
+
+pointing_df_partic_cond_ses %>% group_by(educ_level_parent1) %>% summarise(n = n())
 ```
 
-Run regression for prop of correct points with SES as predictor:
-```{r}
-fl_pointing_ses_lm = lm(prop_correct_points_but_z_score ~ composite_congruency_effect + composite_switch_effect + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score + prop_correct_points_so_z_score, 
-                    data = pointing_df_partic_cond_ses)
-summary(fl_pointing_ses_lm)
+## Flanker costs, SES, and pointing responses
 
-vif(fl_pointing_ses_lm)
-```
+### But trials
 
-Run regression without combining RT and acc z-scores:
+Run regression without combining RT and acc z-scores, for but:
 ```{r}
-fl_pointing_ses_separate_lm = lm(prop_correct_points_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score + prop_correct_points_so_z_score, 
+fl_pointing_ses_but_lm = lm(prop_correct_points_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score + prop_correct_points_so_z_score, 
                              data = pointing_df_partic_cond_ses)
-summary(fl_pointing_ses_separate_lm)
+summary(fl_pointing_ses_but_lm)
 
-vif(fl_pointing_ses_separate_lm)
+vif(fl_pointing_ses_but_lm)
 ```
 
-## SES and proportion of looks
-
-Merge prop looks data with SES data:
+Check normality in model:
 ```{r}
-prop_looks_correct_fl_ses = left_join(prop_looks_correct_fl, ses_df)
-prop_looks_correct_fl_ses = prop_looks_correct_fl_ses %>% 
-  filter(!is.na(ses_index))
-```
+qqnorm(resid(fl_pointing_ses_but_lm))
+qqline(resid(fl_pointing_ses_but_lm))
 
-We have a few outliers with high no-go cost, so exclude them from the model:
-```{r}
-full_flanker_df$participant_number[full_flanker_df$flanker_nogo_effect_z_score > 3]
-prop_looks_correct_fl_ses_non_outlier = prop_looks_correct_fl_ses %>% filter(! participant_number %in% c(20032308, 29032301, 3042306))
-```
-
-Run regression with SES
-```{r}
-fl_looking_ses_non_outlier_lm = lm(prop_correct_looks_but_z_score ~ composite_congruency_effect + composite_switch_effect + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1 + prop_correct_looks_so_z_score, data = prop_looks_correct_fl_ses_non_outlier)
-summary(fl_looking_ses_non_outlier_lm)
-
-vif(fl_looking_ses_non_outlier_lm)
-```
-
-Run regression with SES and separate accuracy and RT costs:
-```{r}
-fl_looking_ses_non_outlier_separate_lm = lm(prop_correct_looks_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1 + prop_correct_looks_so_z_score, data = prop_looks_correct_fl_ses_non_outlier)
-summary(fl_looking_ses_non_outlier_separate_lm)
-
-vif(fl_looking_ses_non_outlier_separate_lm)
-```
-
-To plot relationship between no-go and looks to correct image on but trials, create versions of the regression predicting each outcome and get the residuals:
-```{r}
-fl_no_go = lm(flanker_nogo_effect_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score +  age_months_z_score + educ_level_parent1_z_score + prop_correct_looks_so_z_score, 
-                             data = prop_looks_correct_fl_ses)
-fl_no_go_resid = residuals.lm(fl_no_go)
-
-fl_correct_looks_but = lm(prop_correct_looks_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_acc_z_score +  age_months_z_score + educ_level_parent1_z_score + prop_correct_looks_so_z_score, 
-                             data = prop_looks_correct_fl_ses)
-correct_looks_but_resid = residuals.lm(fl_correct_looks_but)
-
-nogo_looks_but_resid = data.frame(fl_no_go_resid, correct_looks_but_resid)
-```
-
-Plot these residuals to get the relationship between no go cost and correct looks on but trials:
-```{r}
-ggplot(data = nogo_looks_but_resid, aes(x = fl_no_go_resid, y = correct_looks_but_resid)) +
-  theme(text = element_text(size = 14)) +  
-  geom_point() +
-  geom_smooth(method="lm") +
-  xlab('Flanker no-go cost') +
-  ylab('Prop. looks to correct image on but trials') +
-  ggtitle("") +
-  theme(plot.margin=unit(c(1,1,1,1), "cm"))
-
-ggsave('resid_nogo_correct_but_looks.pdf', path = '../graphs', height = 4, width =6)
-
-# this is to save the plot so a combined plot with the SES effect can be put together later:
-
-# nogo_looks = ggplot(data = nogo_looks_but_resid, aes(x = fl_no_go_resid, y = correct_looks_but_resid)) +
-#   theme(text = element_text(size = 14)) +  
-#   geom_point() +
-#   geom_smooth(method="lm") +
-#   xlab('Flanker no-go cost') +
-#   ylab('Prop. looks to correct image on but trials') +
-#   ggtitle("") +
-#   theme(plot.margin=unit(c(1,1,1,1), "cm"))
+shapiro.test(resid(fl_pointing_ses_but_lm))
 ```
 
 To plot relationship between SES and points to correct image on but trials, create versions of the regression predicting each outcome and get the residuals:
@@ -1409,14 +1125,559 @@ ggsave('resid_ses_correct_but_points.pdf', path = '../graphs', height = 4, width
 #   theme(plot.margin=unit(c(1,1,1,1), "cm"))
 ```
 
-Combined plot with no-go cost/looks and SES/points (only run this is you uncomment the code above to save the individual plots):
+### So trials
+
+Run regression without combining RT and acc z-scores, for so:
+```{r}
+fl_pointing_ses_so_lm = lm(prop_correct_points_so_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score, 
+                             data = pointing_df_partic_cond_ses)
+summary(fl_pointing_ses_so_lm)
+
+vif(fl_pointing_ses_so_lm)
+```
+
+IQR test for outliers for Flanker switch RT cost:
+```{r}
+switch_rt_upper_bound = quantile(full_flanker_df$flanker_switch_rt_z_score, 0.75) + 1.5*IQR(full_flanker_df$flanker_switch_rt_z_score)
+
+switch_rt_lower_bound = quantile(full_flanker_df$flanker_switch_rt_z_score, 0.25) - 1.5*IQR(full_flanker_df$flanker_switch_rt_z_score)
+
+switch_rt_outliers = c(full_flanker_df$participant_number[full_flanker_df$flanker_switch_rt_z_score > switch_rt_upper_bound], full_flanker_df$participant_number[full_flanker_df$flanker_switch_rt_z_score < switch_rt_lower_bound])
+```
+
+Dataset excluding outliers for Flanker switch RT cost:
+```{r}
+points_switch_rt_non_out = pointing_df_partic_cond_ses %>% filter(! participant_number %in% switch_rt_outliers)
+```
+
+Check for Flanker switch RT effect in so model when excluding outliers:
+```{r}
+points_so_non_switch_rt_outlier_lm = lm(prop_correct_points_so_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score, 
+                             data = points_switch_rt_non_out)
+summary(points_so_non_switch_rt_outlier_lm)
+
+vif(points_so_non_switch_rt_outlier_lm)
+```
+Effect is marginal once outliers are excluded.
+
+
+## Flanker costs, SES, and proportion of looks
+
+Merge prop looks data with SES data:
+```{r}
+prop_looks_correct_fl_ses = left_join(prop_looks_correct_fl, ses_df)
+prop_looks_correct_fl_ses = prop_looks_correct_fl_ses %>% 
+  filter(!is.na(ses_index))
+```
+
+### But trials
+
+Run regression for but with SES and separate accuracy and RT costs:
+```{r}
+fl_looking_ses_but_lm = lm(prop_correct_looks_but_z_score ~ flanker_congruency_acc_z_score + flanker_congruency_rt_z_score + flanker_switch_acc_z_score + flanker_switch_rt_z_score + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score + prop_correct_looks_so_z_score, data = prop_looks_correct_fl_ses)
+summary(fl_looking_ses_but_lm)
+
+vif(fl_looking_ses_but_lm)
+```
+
+Check normality in model:
+```{r}
+qqnorm(resid(fl_looking_ses_but_lm))
+qqline(resid(fl_looking_ses_but_lm))
+
+shapiro.test(resid(fl_looking_ses_but_lm))
+```
+
+We have a few outliers with high no-go cost:
+```{r}
+full_flanker_df$participant_number[full_flanker_df$flanker_nogo_effect_z_score > 3]
+```
+
+IQR test for outliers for no-go cost:
+```{r}
+nogo_q3 = quantile(full_flanker_df$flanker_nogo_effect_z_score, 0.75)
+nogo_iqr = IQR(full_flanker_df$flanker_nogo_effect_z_score)
+nogo_upper_bound = nogo_q3 + 1.5*nogo_iqr
+
+nogo_q1 = quantile(full_flanker_df$flanker_nogo_effect_z_score, 0.25)
+nogo_lower_bound = nogo_q1 - 1.5*nogo_iqr
+
+nogo_outliers = full_flanker_df$participant_number[full_flanker_df$flanker_nogo_effect_z_score > nogo_upper_bound]
+full_flanker_df$participant_number[full_flanker_df$flanker_nogo_effect_z_score < nogo_lower_bound] # no outliers here
+```
+
+Dataset excluding outliers for no-go cost:
+```{r}
+looks_nogo_non_out = prop_looks_correct_fl_ses %>% filter(! participant_number %in% nogo_outliers)
+```
+
+Run regression with SES and separate accuracy and RT costs without no-go outliers:
+```{r}
+looks_but_non_outlier_lm = lm(prop_correct_looks_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score + prop_correct_looks_so_z_score, data = looks_nogo_non_out)
+summary(looks_but_non_outlier_lm)
+
+vif(looks_but_non_outlier_lm)
+```
+
+To plot relationship between no-go and looks to correct image on but trials, create versions of the regression predicting each outcome and get the residuals:
+```{r}
+fl_no_go = lm(flanker_nogo_effect_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score +  age_months_z_score + educ_level_parent1_z_score + prop_correct_looks_so_z_score, 
+                             data = prop_looks_correct_fl_ses)
+fl_no_go_resid = residuals.lm(fl_no_go)
+
+fl_correct_looks_but = lm(prop_correct_looks_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_acc_z_score +  age_months_z_score + educ_level_parent1_z_score + prop_correct_looks_so_z_score, 
+                             data = prop_looks_correct_fl_ses)
+correct_looks_but_resid = residuals.lm(fl_correct_looks_but)
+
+nogo_looks_but_resid = data.frame(fl_no_go_resid, correct_looks_but_resid)
+```
+
+Plot these residuals to get the relationship between no-go cost and correct looks on but trials:
+```{r}
+ggplot(data = nogo_looks_but_resid, aes(x = fl_no_go_resid, y = correct_looks_but_resid)) +
+  theme(text = element_text(size = 14)) +  
+  geom_point() +
+  geom_smooth(method="lm") +
+  xlab('Flanker no-go cost') +
+  ylab('Prop. looks to correct image on but trials') +
+  ggtitle("") +
+  theme(plot.margin=unit(c(1,1,1,1), "cm"))
+
+ggsave('resid_nogo_correct_but_looks.pdf', path = '../graphs', height = 4, width =6)
+
+# this is to save the plot so a combined plot with the SES effect can be put together later:
+
+# nogo_looks = ggplot(data = nogo_looks_but_resid, aes(x = fl_no_go_resid, y = correct_looks_but_resid)) +
+#   theme(text = element_text(size = 14)) +  
+#   geom_point() +
+#   geom_smooth(method="lm") +
+#   xlab('Flanker no-go cost') +
+#   ylab('Prop. looks to correct image on but trials') +
+#   ggtitle("") +
+#   theme(plot.margin=unit(c(1,1,1,1), "cm"))
+```
+
+IQR test for SES outliers:
+```{r}
+ses_upper_bound = quantile(full_flanker_df$educ_level_parent1_z_score, 0.75) + 1.5*IQR(full_flanker_df$educ_level_parent1_z_score)
+
+ses_lower_bound = quantile(full_flanker_df$educ_level_parent1_z_score, 0.25) - 1.5*IQR(full_flanker_df$educ_level_parent1_z_score)
+
+ses_outliers = c(full_flanker_df$participant_number[full_flanker_df$educ_level_parent1_z_score > ses_upper_bound], full_flanker_df$participant_number[full_flanker_df$educ_level_parent1_z_score < ses_lower_bound]) # no SES outliers
+```
+
+### So trials
+
+Run regression for so with SES and separate accuracy and RT costs:
+```{r}
+fl_looking_ses_so_lm = lm(prop_correct_looks_so_z_score ~ flanker_congruency_acc_z_score + flanker_congruency_rt_z_score + flanker_switch_acc_z_score + flanker_switch_rt_z_score + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score, data = prop_looks_correct_fl_ses)
+summary(fl_looking_ses_so_lm)
+
+vif(fl_looking_ses_so_lm)
+```
+
+IQR test for outliers for Flanker switch acc cost:
+```{r}
+switch_acc_upper_bound = quantile(full_flanker_df$flanker_switch_acc_z_score, 0.75) + 1.5*IQR(full_flanker_df$flanker_switch_acc_z_score)
+
+switch_acc_lower_bound = quantile(full_flanker_df$flanker_switch_acc_z_score, 0.25) - 1.5*IQR(full_flanker_df$flanker_switch_acc_z_score)
+
+switch_acc_outliers = c(full_flanker_df$participant_number[full_flanker_df$flanker_switch_acc_z_score > switch_acc_upper_bound], full_flanker_df$participant_number[full_flanker_df$flanker_switch_acc_z_score < switch_acc_lower_bound])
+```
+
+Dataset excluding outliers for Flanker switch acc cost:
+```{r}
+looks_switch_acc_non_out = prop_looks_correct_fl_ses %>% filter(! participant_number %in% switch_acc_outliers)
+```
+
+Run regression predicting looks on so trials without Flanker switch acc outliers:
+```{r}
+looks_so_non_switch_acc_outlier_lm = lm(prop_correct_looks_so_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score, data = looks_switch_acc_non_out)
+summary(looks_so_non_switch_acc_outlier_lm)
+
+vif(looks_so_non_switch_acc_outlier_lm)
+```
+
+Dataset excluding outliers for Flanker switch RT cost:
+```{r}
+looks_switch_rt_non_out = prop_looks_correct_fl_ses %>% filter(! participant_number %in% switch_rt_outliers)
+```
+
+Run regression predicting looks on so trials without Flanker switch RT outliers:
+```{r}
+looks_so_non_switch_rt_outlier_lm = lm(prop_correct_looks_so_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score, data = looks_switch_rt_non_out)
+summary(looks_so_non_switch_rt_outlier_lm)
+
+vif(looks_so_non_switch_rt_outlier_lm)
+```
+
+Run regression predicting looks on so trials without no-go outliers:
+```{r}
+looks_so_non_outlier_lm = lm(prop_correct_looks_so_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score, data = looks_nogo_non_out)
+summary(looks_so_non_outlier_lm)
+
+vif(looks_but_non_outlier_lm)
+```
+
+Combined plot with no-go cost/looks and SES/points (only run this if you uncomment the code above to save the individual plots):
 ```{r}
 # grid.arrange(nogo_looks, ses_points, nrow=1)
 # 
 # nogo_ses_residuals = arrangeGrob(nogo_looks, ses_points, nrow=1)
 #  ggsave(file="nogo_ses_residuals.pdf", path = '../graphs', nogo_ses_residuals)
-#  
-#  nogo_ses_residuals = arrangeGrob(nogo_looks, ses_points, nrow=1)
 #  ggsave(file="nogo_ses_residuals.jpg", path = '../graphs', nogo_ses_residuals)
 ```
 
+
+
+# Correlation table
+
+Test correlations between all variables included in models predicting pointing performance:
+```{r}
+pointing_df_partic_cond_ses = pointing_df_partic_cond_ses %>% filter(!is.na(educ_level_parent1_z_score))
+
+cor.test(pointing_df_partic_cond_ses$flanker_congruency_acc_z_score, pointing_df_partic_cond_ses$educ_level_parent1_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_congruency_rt_z_score, pointing_df_partic_cond_ses$educ_level_parent1_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_switch_acc_z_score, pointing_df_partic_cond_ses$educ_level_parent1_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_switch_rt_z_score, pointing_df_partic_cond_ses$educ_level_parent1_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_nogo_effect_z_score, pointing_df_partic_cond_ses$educ_level_parent1_z_score)
+cor.test(pointing_df_partic_cond_ses$prop_correct_points_but_z_score, pointing_df_partic_cond_ses$educ_level_parent1_z_score)
+cor.test(pointing_df_partic_cond_ses$prop_correct_points_so_z_score, pointing_df_partic_cond_ses$educ_level_parent1_z_score)
+
+cor.test(pointing_df_partic_cond_ses$flanker_congruency_acc_z_score, pointing_df_partic_cond_ses$flanker_congruency_rt_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_congruency_acc_z_score, pointing_df_partic_cond_ses$flanker_switch_acc_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_congruency_acc_z_score, pointing_df_partic_cond_ses$flanker_switch_rt_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_congruency_acc_z_score, pointing_df_partic_cond_ses$flanker_nogo_effect_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_congruency_acc_z_score, pointing_df_partic_cond_ses$prop_correct_points_but_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_congruency_acc_z_score, pointing_df_partic_cond_ses$prop_correct_points_so_z_score)
+
+cor.test(pointing_df_partic_cond_ses$flanker_congruency_rt_z_score, pointing_df_partic_cond_ses$flanker_switch_acc_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_congruency_rt_z_score, pointing_df_partic_cond_ses$flanker_switch_rt_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_congruency_rt_z_score, pointing_df_partic_cond_ses$flanker_nogo_effect_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_congruency_rt_z_score, pointing_df_partic_cond_ses$prop_correct_points_but_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_congruency_rt_z_score, pointing_df_partic_cond_ses$prop_correct_points_so_z_score)
+
+cor.test(pointing_df_partic_cond_ses$flanker_switch_rt_z_score, pointing_df_partic_cond_ses$flanker_switch_acc_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_nogo_effect_z_score, pointing_df_partic_cond_ses$flanker_switch_acc_z_score)
+cor.test(pointing_df_partic_cond_ses$prop_correct_points_but_z_score, pointing_df_partic_cond_ses$flanker_switch_acc_z_score)
+cor.test(pointing_df_partic_cond_ses$prop_correct_points_so_z_score, pointing_df_partic_cond_ses$flanker_switch_acc_z_score)
+
+cor.test(pointing_df_partic_cond_ses$flanker_switch_rt_z_score, pointing_df_partic_cond_ses$flanker_nogo_effect_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_switch_rt_z_score, pointing_df_partic_cond_ses$prop_correct_points_but_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_switch_rt_z_score, pointing_df_partic_cond_ses$prop_correct_points_so_z_score)
+
+cor.test(pointing_df_partic_cond_ses$flanker_nogo_effect_z_score, pointing_df_partic_cond_ses$prop_correct_points_but_z_score)
+cor.test(pointing_df_partic_cond_ses$flanker_nogo_effect_z_score, pointing_df_partic_cond_ses$prop_correct_points_so_z_score)
+
+cor.test(pointing_df_partic_cond_ses$prop_correct_points_but_z_score, pointing_df_partic_cond_ses$prop_correct_points_so_z_score)
+```
+
+
+
+
+# 'Appendix' A: Models predicting pointing/looking without SES
+
+## Pointing and Flanker costs
+
+Run a regression to test whether Flanker performance predicts performance on but trials (pointing), without combining RT and acc z-scores:
+```{r}
+fl_pointing_separate_lm = lm(prop_correct_points_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + prop_correct_points_so_z_score, 
+                             data = pointing_df_partic_cond)
+summary(fl_pointing_separate_lm)
+
+vif(fl_pointing_separate_lm)
+```
+
+### Plot relationship between Flanker Switch RT cost and correct points on but trials
+
+To plot relationship between Flanker switch cost RT and points to correct image on but trials, create versions of the regression predicting each outcome and get the residuals:
+```{r}
+fl_pointing_switch_rt = lm(flanker_switch_rt_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + prop_correct_points_so_z_score, 
+                             data = pointing_df_partic_cond)
+switch_resid = residuals.lm(fl_pointing_switch_rt)
+
+fl_pointing_correct_points_but = lm(prop_correct_points_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + prop_correct_points_so_z_score, 
+                             data = pointing_df_partic_cond)
+correct_points_but_resid = residuals.lm(fl_pointing_correct_points_but)
+
+switch_but_resid = data.frame(switch_resid, correct_points_but_resid)
+```
+
+Plot these residuals to get the relationship between switch RT cost and correct points on but trials:
+```{r}
+ggplot(data = switch_but_resid, aes(x = switch_resid, y = correct_points_but_resid)) +
+  theme(text = element_text(size = 14)) +  
+  geom_point() +
+  geom_smooth(method="lm") +
+  xlab('Flanker Switch reaction time cost') +
+  ylab('Prop. points to correct image on but trials') +
+  ggtitle("'But' accuracy and Flanker Switch reaction time cost") 
+
+ggsave('resid_switch_correct_but_points.pdf', path = '../graphs', height = 4, width =6)
+```
+
+## Flanker costs and looking to correct image
+
+Merge Flanker data and proportion of looks data:
+```{r}
+prop_looks_correct_fl = right_join(prop_looks_correct_child, full_flanker_df, by = c('participant_number'))
+```
+
+Calculate z-score for proportion of looks to correct image on so trials:
+```{r}
+prop_looks_correct_fl$mean_prop_correct_looks_so = mean(prop_looks_correct_fl$prop_correct_looks_so)
+prop_looks_correct_fl$sd_prop_correct_looks_so = sd(prop_looks_correct_fl$prop_correct_looks_so)
+
+prop_looks_correct_fl = prop_looks_correct_fl %>% 
+  mutate(prop_correct_looks_so_z_score = ((prop_correct_looks_so - mean_prop_correct_looks_so)/sd_prop_correct_looks_so))
+```
+
+Calculate z-score for proportion of looks to correct image on but trials:
+```{r}
+prop_looks_correct_fl$mean_prop_correct_looks_but = mean(prop_looks_correct_fl$prop_correct_looks_but)
+prop_looks_correct_fl$sd_prop_correct_looks_but = sd(prop_looks_correct_fl$prop_correct_looks_but)
+
+prop_looks_correct_fl = prop_looks_correct_fl %>% 
+  mutate(prop_correct_looks_but_z_score = ((prop_correct_looks_but - mean_prop_correct_looks_but)/sd_prop_correct_looks_but))
+```
+
+Run a regression to test whether Flanker performance predicts looking performance on but trials, without combining RT and acc z-scores:
+```{r}
+fl_looking_separate_lm = lm(prop_correct_looks_but_z_score ~ flanker_congruency_rt_z_score + flanker_congruency_acc_z_score + flanker_switch_rt_z_score + flanker_switch_acc_z_score +  flanker_nogo_effect_z_score + age_months_z_score + prop_correct_looks_so_z_score, data = prop_looks_correct_fl)
+summary(fl_looking_separate_lm)
+vif(fl_looking_separate_lm)
+```
+
+### Plot relationship between Flanker no go cost and correct looks on but trials
+
+To plot relationship between Flanker no go cost and looks to correct image on but trials, create versions of the regression predicting each outcome and get the residuals:
+```{r}
+fl_looking_nogo = lm(flanker_nogo_effect_z_score ~ composite_congruency_effect + composite_switch_effect + age_months_z_score + prop_correct_looks_so_z_score, 
+                             data = prop_looks_correct_fl)
+nogo_resid = residuals.lm(fl_looking_nogo)
+
+fl_looking_correct_looks_but = lm(prop_correct_looks_but_z_score ~ composite_congruency_effect + composite_switch_effect + age_months_z_score + prop_correct_looks_so_z_score, 
+                             data = prop_looks_correct_fl)
+correct_looks_but_resid = residuals.lm(fl_looking_correct_looks_but)
+
+nogo_but_resid = data.frame(nogo_resid, correct_looks_but_resid)
+
+fl_looking_nogo = lm(flanker_nogo_effect_z_score ~ composite_congruency_effect + composite_switch_effect + age_months_z_score + prop_correct_looks_so_z_score, 
+                             data = prop_looks_correct_fl)
+nogo_resid = residuals.lm(fl_looking_nogo)
+
+fl_looking_correct_looks_but = lm(prop_correct_looks_but_z_score ~ composite_congruency_effect + composite_switch_effect + age_months_z_score + prop_correct_looks_so_z_score, 
+                             data = prop_looks_correct_fl)
+correct_looks_but_resid = residuals.lm(fl_looking_correct_looks_but)
+
+nogo_but_resid = data.frame(nogo_resid, correct_looks_but_resid)
+```
+
+Plot these residuals to get the relationship between no-go cost and correct looks on but trials:
+```{r}
+ggplot(data = nogo_but_resid, aes(x = nogo_resid, y = correct_looks_but_resid)) +
+  theme(text = element_text(size = 14)) +  
+  geom_point() +
+  geom_smooth(method="lm") +
+  xlab('No-Go Cost') +
+  ylab('Prop. looks to correct image on but trials') +
+  ggtitle("'But' accuracy and No-Go Cost")
+
+ggsave('resid_nogo_correct_but_non_outlier_looks.pdf', path = '../graphs', height = 4, width =6)
+```
+
+Plot raw data correlation to get the relationship between no go cost and correct looks on but trials:
+```{r}
+ggplot(data = prop_looks_correct_fl, aes(x = flanker_nogo_effect_z_score, y = prop_correct_looks_but_z_score)) +
+  theme(text = element_text(size = 14)) +  
+  geom_point() +
+  geom_smooth(method="lm") +
+  xlab('No-Go Cost') +
+  ylab('Prop. looks to correct image on but trials') +
+  ggtitle("'But' accuracy and No-Go Cost")
+
+ggsave('corr_nogo_correct_but_non_outlier_looks.pdf', path = '../graphs', height = 4, width =6)
+```
+
+
+
+
+
+# Appendix B: Models predicting pointing/looking performance with composite Flanker congruency and switch costs
+
+## Without SES
+
+Run a regression to test whether Flanker performance predicts pointing performance on but trials:
+```{r}
+fl_pointing_lm = lm(prop_correct_points_but_z_score ~ composite_congruency_effect + composite_switch_effect + flanker_nogo_effect_z_score + age_months_z_score + prop_correct_points_so_z_score, 
+                    data = pointing_df_partic_cond)
+summary(fl_pointing_lm)
+
+vif(fl_pointing_lm)
+```
+
+Run a regression to test whether Flanker performance predicts looking performance on but trials:
+```{r}
+fl_looking_lm = lm(prop_correct_looks_but_z_score ~ composite_congruency_effect + composite_switch_effect + flanker_nogo_effect_z_score + age_months_z_score + prop_correct_looks_so_z_score, data = prop_looks_correct_fl)
+summary(fl_looking_lm)
+
+vif(fl_looking_lm)
+```
+
+## With SES
+
+### Pointing performance
+
+Run regression for prop of correct points with so with SES as predictor:
+```{r}
+fl_pointing_ses_comb_so_lm = lm(prop_correct_points_so_z_score ~ composite_congruency_effect + composite_switch_effect + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score, 
+                    data = pointing_df_partic_cond_ses)
+summary(fl_pointing_ses_comb_so_lm)
+
+vif(fl_pointing_ses_comb_so_lm)
+```
+
+Run regression for prop of correct points with but with SES as predictor:
+```{r}
+fl_pointing_ses_comb_but_lm = lm(prop_correct_points_but_z_score ~ composite_congruency_effect + composite_switch_effect + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score + prop_correct_points_so_z_score, 
+                    data = pointing_df_partic_cond_ses)
+summary(fl_pointing_ses_comb_but_lm)
+
+vif(fl_pointing_ses_comb_so_lm)
+```
+
+### Looking performance
+
+Run regression for looking performance on so trials with SES and combined accuracy and RT costs:
+```{r}
+fl_looking_ses_so_comb_lm = lm(prop_correct_looks_so_z_score ~ composite_congruency_effect + composite_switch_effect + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1, data = prop_looks_correct_fl_ses)
+summary(fl_looking_ses_so_comb_lm)
+
+vif(fl_looking_ses_so_comb_lm)
+```
+
+Run regression for but with SES and combined accuracy and RT costs:
+```{r}
+fl_looking_ses_but_comb_lm = lm(prop_correct_looks_but_z_score ~ composite_congruency_effect + composite_switch_effect + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1 + prop_correct_looks_so_z_score, data = prop_looks_correct_fl_ses)
+summary(fl_looking_ses_but_comb_lm)
+
+vif(fl_looking_ses_but_comb_lm)
+```
+
+
+
+
+# Appendix C: Children who looked/pointed above chance on but trials
+
+Get children who looked above chance on but trials:
+```{r}
+looks_but_above50 = prop_looks_correct_fl_ses %>% filter(prop_correct_looks_but > 0.5)
+```
+
+Model with just these children:
+```{r}
+looks_but_above50_lm = lm(prop_correct_looks_but_z_score ~ flanker_congruency_acc_z_score + flanker_congruency_rt_z_score + flanker_switch_acc_z_score + flanker_switch_rt_z_score + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score + prop_correct_looks_so_z_score, data = looks_but_above50)
+summary(looks_but_above50_lm)
+
+vif(looks_but_above50_lm)
+```
+
+Get children who pointed above chance on but trials:
+```{r}
+points_but_above50 = pointing_df_partic_cond_ses %>% filter(prop_correct_points_but > 0.5)
+```
+
+Model with just these children:
+```{r}
+points_but_above50_lm = lm(prop_correct_points_but_z_score ~ flanker_congruency_acc_z_score + flanker_congruency_rt_z_score + flanker_switch_acc_z_score + flanker_switch_rt_z_score + flanker_nogo_effect_z_score + age_months_z_score + educ_level_parent1_z_score + prop_correct_points_so_z_score, data = points_but_above50)
+summary(points_but_above50_lm)
+
+vif(points_but_above50_lm)
+```
+Super high VIFS for age, SES, and prop correct points on so trials. Only includes 13 children so not enough to draw conclusions from.
+
+
+
+
+
+# Appendix D: Low vs. high Flanker cost children
+
+As an exploratory analysis, we will separate children into those with low and high Flanker costs and visualize their eye gaze patterns to see if there are clear differences.
+
+## No go cost
+
+Separate by low/high no-go cost:
+```{r}
+full_flanker_df = full_flanker_df %>% mutate(low_high_nogo_cost = case_when(
+  flanker_nogo_effect_z_score < 0 ~ 'Low no-go cost',
+  flanker_nogo_effect_z_score > 0 ~ 'High no-go cost'
+))
+```
+
+Make time sequence data with low/high no-go group:
+```{r}
+test_df_child = test_df %>% filter(child_adult_group == "children")
+test_df_child = left_join(test_df_child, full_flanker_df, by = 'participant_number_fl')
+
+timecourse_correct_point_nogo <- make_time_sequence_data(test_df_child, time_bin_size = 20, 
+                                         predictor_columns = c("condition",
+                                                               "correct_point",
+                                                               "low_high_nogo_cost"),
+                                         aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
+                                         summarize_by = "participant_number.x") %>%
+  filter(!is.na(low_high_nogo_cost))
+```
+
+Make time course graph for high vs. low no-go cost and correct vs. incorrect points:
+```{r}
+plot(timecourse_correct_point_nogo, predictor_column = "condition") + theme_bw() +  
+  theme(text = element_text(size = 12)) +  
+  geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
+  geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
+  ylim(0,1) +
+  xlim(-1000, 4000) +
+  facet_grid(rows = vars(correct_point), cols = vars(low_high_nogo_cost)) +
+  xlab("Time since connective onset (ms)") +
+  ylab("Proportion of looks to semantically associated image") +
+  ggtitle("Proportion of looks to semantically associated image: High vs. low no-go cost")
+
+ggsave('timecourse_nogo_high_low.pdf', path = '../graphs', height = 5, width = 9)
+```
+
+## Switch RT difference
+
+Separate by low/high switch RT:
+```{r}
+test_df_child = test_df_child %>% mutate(low_high_switch_rt_diff = case_when(
+  flanker_switch_rt_z_score < 0 ~ 'Low switch RT cost',
+  flanker_switch_rt_z_score > 0 ~ 'High switch RT cost'
+))
+```
+
+Make time sequence data with low/high switch RT difference group:
+```{r}
+timecourse_correct_point_switch_rt <- make_time_sequence_data(test_df_child, time_bin_size = 20, 
+                                         predictor_columns = c("condition",
+                                                               "correct_point",
+                                                               "low_high_switch_rt_diff"),
+                                         aois = c("AVERAGE_IA_1_SAMPLE_COUNT_."),
+                                         summarize_by = "participant_number.x") %>%
+  filter(!is.na(low_high_switch_rt_diff))
+
+```
+
+Make time course graph for high vs. low switch RT cost and correct vs. incorrect points:
+```{r}
+plot(timecourse_correct_point_switch_rt, predictor_column = "condition") + theme_bw() +  
+  theme(text = element_text(size = 12)) +  
+  geom_hline(yintercept=0.5, colour="black",size=I(0.5),show.legend = FALSE)+
+  geom_vline(xintercept=0, colour="black",size=I(0.5),show.legend = FALSE) +
+  ylim(0,1) +
+  xlim(-1000, 4000) +
+  facet_grid(rows = vars(correct_point), cols = vars(low_high_switch_rt_diff)) +
+  xlab("Time since connective onset (ms)") +
+  ylab("Proportion of looks to semantically associated image") +
+  ggtitle("Proportion of looks to semantically associated image: High vs. low switch RT cost")
+
+ggsave('timecourse_switch_rt_high_low.pdf', path = '../graphs', height = 5, width = 9)
+```
